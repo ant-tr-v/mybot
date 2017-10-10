@@ -194,10 +194,10 @@ class Bot:
         self.keyboards = {}#TODO написать админские клавиатуры
         self.keyboards[KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("💽 Моя статистика"),
                                                                             telega.KeyboardButton("🎖 Топы"), telega.KeyboardButton("👻 О боте")]], resize_keyboard = True)
-        self.keyboards[KeyboardType.TOP] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("🏅 Общий счет"), telega.KeyboardButton("⚔️ Дамагеры"),
+        self.keyboards[KeyboardType.TOP] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("🏅 Рейтинг"), telega.KeyboardButton("⚔️ Дамагеры"),
                                                                         telega.KeyboardButton("❤️ Танки")],[telega.KeyboardButton("🤸🏽‍♂️ Ловкачи"), telega.KeyboardButton("🔫 Снайперы"),
                                                                         telega.KeyboardButton("🗣 Дипломаты")],
-                                                                       [telega.KeyboardButton("📜 Полный список игроков"), telega.KeyboardButton("🔙 Назад")]], resize_keyboard = True)
+                                                                       [telega.KeyboardButton("📜 Полный список"), telega.KeyboardButton("🔙 Назад")]], resize_keyboard = True)
         self.state = KeyboardType.DEFAULT
         cur.execute("SELECT * FROM users")
         for r in cur.fetchall():
@@ -331,7 +331,7 @@ class Bot:
              "<b>\nБроня:                 </b>" + str(ps.deff) + \
              "<b>\nСила:                   </b>" + str(ps.power) + \
              "<b>\nМеткость:           </b>" + str(ps.accuracy) + \
-             "<b>\nКрасноречие:   </b>" + str(ps.oratory) + \
+             "<b>\nХаризма:            </b>" + str(ps.oratory) + \
              "<b>\nЛовкость:           </b>" +  str(ps.agility) + \
              "<b>\n\nУспешные рейды:     </b>" + str(ps.raids)
         bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML')
@@ -391,7 +391,7 @@ class Bot:
                 break
         if n >= 0:
             nic = tlines[n][1:]
-            ps.hp, ps.attack, ps.deff = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n+2][tlines[n+2].find("/"):].split('|')]
+            ps.hp, hanger, ps.attack, ps.deff = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n+2][tlines[n+2].find("/"):].split('|')]
             ps.power, ps.accuracy = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n+3].split('|')]
             ps.oratory, ps.agility = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n+4].split('|')]
         else:
@@ -408,7 +408,7 @@ class Bot:
                     ps.power = int(tlines[i][tlines[i].find(':') + 2:])
                 elif "Меткость:" in tlines[i]:
                     ps.accuracy = int(tlines[i][tlines[i].find(':') + 2:])
-                elif "Красноречие:" in tlines[i]:
+                elif "Харизма:" in tlines[i]:
                     ps.oratory = int(tlines[i][tlines[i].find(':') + 2:])
                 elif "Ловкость:" in tlines[i]:
                     ps.agility = int(tlines[i][tlines[i].find(':') + 2:])
@@ -788,9 +788,9 @@ class Bot:
             print("Sql error occurred:", e.args[0])
         if (message.forward_from is not None) and (message.forward_from.id == 430930191) and ('🗣' in text and '❤️'in text and '🔥' in text and '⚔️' in text) and message.chat.type == "private":
             if user.id not in self.users.keys():
-                #if "Убежище 6" not in text:
-                 #   bot.sendMessage(chat_id=chat_id, text="А ты фракцией не ошибся?")
-                  #  return
+                if "Убежище 6" not in text:
+                    bot.sendMessage(chat_id=chat_id, text="А ты фракцией не ошибся?")
+                    return
                 if message.date - message.forward_date > datetime.timedelta(minutes=2):
                     bot.sendMessage(chat_id=chat_id, text="А можно профиль посвежее?")
                     return
@@ -837,7 +837,7 @@ class Bot:
                         return
                     elif text == "🎖 Топы":
                         player.keyboard = KeyboardType.TOP
-                        bot.sendMessage(chat_id = chat_id, text = "Здесь ты можешь увидеть списки лучшех игроков 6 убежища\n"
+                        bot.sendMessage(chat_id = chat_id, text = "Здесь ты можешь увидеть списки лучших игроков 6 убежища\n"
                                                                   "<i>* перед именем игрока говорят о том, что его профиль устарел, чем их меньше тем актуальнее данные</i>",
                                         reply_markup = self.keyboards[player.keyboard], parse_mode='HTML')
                         return
@@ -845,7 +845,7 @@ class Bot:
                         self.my_stat(bot, player)
                         return
                 elif  player.keyboard == KeyboardType.TOP:
-                    if text == "🏅 Общий счет":
+                    if text == "🏅 Рейтинг":
                         self.top(bot, user.id, user.username, chat_id, "", StatType.ALL, time=message.date)
                         return
                     if text == "⚔️ Дамагеры":
@@ -863,17 +863,17 @@ class Bot:
                     if text == "🗣 Дипломаты":
                         self.top(bot, user.id, user.username, chat_id, "", StatType.ORATORY, time=message.date)
                         return
-                    if text == "📜 Полный список игроков":
+                    if text == "📜 Полный список":
                         self.top(bot, user.id, user.username, chat_id, "", StatType.ALL, invisible=True, title="Игроки", time=message.date)
                         return
                 bot.sendMessage(chat_id=chat_id, text="Это что-то странное🤔\nДумать об этом я конечно не буду 😝")
 
     def info(self, bot, player:Player):
-        text = "Перед вами стат бот 6 убежища <i>и он крут😎</i>\nОзнакомиться с его коммандами вы можете по ссылке" \
+        text = "Перед вами стат бот 6 убежища <i>и он крут😎</i>\nОзнакомиться с его командами вы можете по ссылке" \
                " http://telegra.ph/StatBot-Redizajn-09-30\nНо для вашего же удобства рекомендую пользоваться графическим интерфейсом\n" \
                "Бот создан во имя блага и процветания 6 убежища игроком @ant_ant\n" \
                "Так что если найдете в нем серьезные баги - пишите мне)\nЕсли есть желание помочь - можетье подкинуть" \
-               " денег на поддержку бота (https://qiwi.me/67f1c4c8-705c-4bb3-a8d3-a35717f63858) или связаться со мной и записаться в группу алфа-тестеров\n" \
+               " денег (https://qiwi.me/67f1c4c8-705c-4bb3-a8d3-a35717f63858) на поддержку бота или связаться со мной и записаться в группу альфа-тестеров\n" \
                "\n<i>Играйте, общайтесь, радуйтесь жизни! Вместе мы сильнейшая фракция в игре!</i>\n\n<i>P.S.: Графический интерфейс еще не завершен. Дальше будет лучше</i>"
         bot.sendMessage(chat_id = player.chatid, text=text,  parse_mode='HTML', disable_web_page_preview=True, reply_markup = self.keyboards[player.keyboard])
 
