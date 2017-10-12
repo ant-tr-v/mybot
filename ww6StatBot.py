@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from telegram.ext import Updater
 from telegram.ext import Filters
 from telegram.ext import MessageHandler
@@ -94,7 +95,6 @@ class PlayerStat:
         self.time, self.hp, self.attack, self.deff, self.power, self.oratory, self.agility, self.accuracy, self.raids = \
             ps.time, ps.hp, ps.attack, ps.deff, ps.power, ps.oratory, ps.agility, ps.accuracy, ps.raids
 
-
 class Player:
     def __init__(self, cur, setings=(None, -1, "", "", "", [None, None, None, None, None])):
         self.id, self.chatid, self.username, self.nic, self.squad, sids = setings
@@ -161,6 +161,62 @@ class Player:
                     print("Sql error occurred:", e.args[0])
                     return -1
 
+class PinOnline:
+    def __init__(self, squadids:dict, bot):
+        self.squadids = squadids
+        self.online = set()
+        self.power = {sq : 0 for sq in squadids.keys()}
+        self.power["none"] = 0
+        self.names = {sq: set() for sq in squadids.keys()}
+        self.names["none"] = set()
+        markup = [[telega.InlineKeyboardButton(text="Готов 🤺", callback_data="online")]]
+        self.markup = [[telega.InlineKeyboardButton(text="Закрыть", callback_data="ofline")]]
+        text = "#пинонлайн Готовимся к рейду"
+        self.messages = {}
+        self.connectionns = {}
+        for sq in self.squadids.values():
+            self.messages[sq] = bot.sendMessage(chat_id = sq, text= text, reply_markup=telega.InlineKeyboardMarkup(markup)).message_id
+
+    def add(self, player:Player):
+        if player.id in self.online:
+            return False
+        self.online.add(player.id)
+        ps = player.stats[4]
+        if player.squad in self.squadids.keys():
+            self.power[player.squad] += ps.attack + ps.hp + ps.deff + ps.agility + 10
+            self.names[player.squad].add(player.username)
+        else:
+            self.power["none"] += ps.attack + ps.hp + ps.deff + ps.agility + 10
+            self.names["none"].add(player.username)
+        return True
+
+    def delete(self, player:Player):
+        if player.id not in self.online:
+            return False
+        self.online.remove(player.id)
+        ps = player.stats[4]
+        if player.squad in self.squadids.keys():
+            self.power[player.squad] -= (ps.attack + ps.hp + ps.deff + ps.agility + 10)
+            self.names[player.squad].remove(player.username)
+        else:
+            self.power["none"] -= (ps.attack + ps.hp + ps.deff + ps.agility + 10)
+            self.names["none"].remove(player.username)
+        return True
+
+    def text(self):
+        s = "Силы на данный момент:\n"
+        for sq in self.power.keys():
+            s += sq + ": <b>" + str(self.power[sq]) + "</b>"+ str(self.names[sq]) +"\n"
+        return s
+
+    def connect(self, chat_id, bot):
+        pass
+
+    def close(self, bot):
+        for m in self.messages.items():
+            bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
+
+
 
 class Bot:
     def __init__(self, database: str, token, bot_name: str):
@@ -185,6 +241,7 @@ class Bot:
         self.blacklist = set(r[0] for r in cur.fetchall())
         cur.execute("SELECT * FROM raids")
         self.raids = set((r[0], r[1]) for r in cur.fetchall())
+        self.pinonline = None
         self.usersbyname = {}
         self.masters = {}
         self.users = {}
@@ -198,13 +255,15 @@ class Bot:
                                                                         telega.KeyboardButton("❤️ Танки")],[telega.KeyboardButton("🤸🏽‍♂️ Ловкачи"), telega.KeyboardButton("🔫 Снайперы"),
                                                                         telega.KeyboardButton("🗣 Дипломаты")],
                                                                        [telega.KeyboardButton("📜 Полный список"), telega.KeyboardButton("🔙 Назад")]], resize_keyboard = True)
+        self.keyboards[KeyboardType.STATS] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("📱 Статистика"), telega.KeyboardButton("🔝 Прирост")],
+                                                                         [telega.KeyboardButton("📲 Сохранить"),  telega.KeyboardButton("🔙 Назад")]], resize_keyboard = True)
         self.state = KeyboardType.DEFAULT
         cur.execute("SELECT * FROM users")
         for r in cur.fetchall():
             #print(r)да почитай описание к боту, можно удобно следить за своими статами, бот в процессе допиливания, и будет расширен функционал))) но потом )))
             p = list(r[:5])
             p.append(list(r[5:]))
-            self.usersbyname[r[2]] = r[0]
+            self.usersbyname[r[2].lower()] = r[0]
             self.users[r[0]] = Player(cur, p)
 
         cur.execute("SELECT * FROM masters")
@@ -319,12 +378,14 @@ class Bot:
         bot.sendMessage(chat_id=chat_id,
                         text="Создан отряд " + self.squadnames[short] + " aka " + short)
 
-    def stat(self, bot, id, chat_id, n):
+    def stat(self, bot, id, chat_id, n, textmode = False):
         player = self.users[id]
         ps = player.get_stats(n - 1)
         s = "<b>" + player.nic + "</b>\n"
         if player.squad != "":
             s += "Отряд: <b>" + self.squadnames[player.squad] + "</b>\n"
+        if ps is None:
+            return "Эта ячейка памяти ещё пуста 🙃"
         s += "<b>От </b>" + str(ps.time) + "\n" \
                                       "<b>\nЗдоровье:          </b>" + str(ps.hp) + \
              "<b>\nУрон:                   </b>" + str(ps.attack) + \
@@ -334,23 +395,14 @@ class Bot:
              "<b>\nХаризма:            </b>" + str(ps.oratory) + \
              "<b>\nЛовкость:           </b>" +  str(ps.agility) + \
              "<b>\n\nУспешные рейды:     </b>" + str(ps.raids)
-        bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML')
+        if textmode:
+            return s
+        else:
+            bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML')
 
-    def change(self, bot, id, chat_id, text):
-        n = 4
-        if len(text.split()) > 1 and text.split()[1].isdigit():
-            n = int(text.split()[1])
-            if n < 1 or n > 3 or self.users[id].stats[n - 1] is None:
-                s = [str(i + 1) + ", " for i in range(3) if self.users[id].stats[i] is not None]
-                s = "".join(s).strip(", ")
-                if not s:
-                    bot.sendMessage(chat_id=chat_id, text="У вас ещё нет сохранений")
-                else:
-                    bot.sendMessage(chat_id=chat_id, text="Доступны сохранения " + s)
-                return
+    def change(self, bot, id, chat_id, n, textmode = False):
         if self.users[id].stats[n - 1] is None:
-            bot.sendMessage(chat_id=chat_id, text="Пришлёшь мне ещё один форвард твоих статов?")
-            return
+            return "Эта ячейка памяти ещё пуста"
         player = self.users[id]
         ops = player.get_stats(n - 1)
         player = self.users[id]
@@ -373,7 +425,10 @@ class Bot:
             s += "<b>\nЛовкость:           </b>" + str(ps.agility - ops.agility)
         if ps.raids - ops.raids:
             s += "<b>\n\nУспешные рейды:     </b>" + str(ps.raids - ops.raids)
-        bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML')
+        if textmode == True:
+            return s
+        else:
+            bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML')
 
     def handle_forward(self, cur, bot, message):
         user = message.from_user
@@ -445,7 +500,7 @@ class Bot:
         bot.sendMessage(chat_id=player.chatid, text="Я занес твои результаты")
         return True
 
-    def top(self, bot, id, username, chat_id, text, type:StatType, invisible = False, title = "", time = datetime.datetime.now()):
+    def top(self, bot, id, username, chat_id, text, type:StatType, invisible = False, title = "", time = datetime.datetime.now(), textmode = False):
         arr = []
         s = ""
         if title:
@@ -513,7 +568,10 @@ class Bot:
                 i += 1
         if (id in self.admins or (con1 and cap)) and not invisible:
             s += "\n\nОбщий счет: " + str(sum)
-        bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML', disable_web_page_preview=True)
+        if not textmode:
+            bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML', disable_web_page_preview=True)
+        else:
+            return s
 
     def pin(self, bot, chat_id, text, uid):
         id = -1
@@ -550,11 +608,26 @@ class Bot:
                     return
             self.stat(bot, user.id, chat_id, n)
         elif text0 == '/change':
-            self.change(bot, user.id, chat_id, text)
+            n = 4
+            player = self.users[user.id]
+            if len(text.split()) > 1 and text.split()[1].isdigit():
+                n = int(text.split()[1])
+                if n < 1 or n > 3 or player.stats[n - 1] is None:
+                    s = [str(i + 1) + ", " for i in range(3) if player.stats[i] is not None]
+                    s = "".join(s).strip(", ")
+                    if not s:
+                        bot.sendMessage(chat_id=chat_id, text="У вас ещё нет сохранений")
+                    else:
+                        bot.sendMessage(chat_id=chat_id, text="Доступны сохранения " + s)
+                    return
+            if player.stats[n - 1] is None:
+                bot.sendMessage(chat_id=chat_id, text="Пришлёшь мне ещё один форвард твоих статов?")
+                return
+            self.change(bot, user.id, chat_id, n)
         elif text0 == '/stat':
             name = ""
             try:
-                name = text.split()[1].strip("@")
+                name = text.split()[1].strip("@").lower()
             except ImportError:
                 bot.sendMessage(chat_id=chat_id, text="А чьи статы-то?")
                 return
@@ -597,7 +670,7 @@ class Bot:
             except ValueError:
                 bot.sendMessage(id=self.users[user.id].chatid, text="Неверный формат команды")
                 return
-            master = master.strip("@")
+            master = master.strip("@").lower()
             if master not in self.usersbyname.keys():
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="не знаю пользователя @" + master)
                 return
@@ -610,7 +683,7 @@ class Bot:
             except ValueError:
                 bot.sendMessage(id=self.users[user.id].chatid, text="Неверный формат команды")
                 return
-            master = master.strip("@")
+            master = master.strip("@").lower()
             if master not in self.usersbyname.keys():
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="не знаю пользователя @" + master)
                 return
@@ -623,7 +696,7 @@ class Bot:
             except ValueError:
                 bot.sendMessage(id=self.users[user.id].chatid, text="Неверный формат команды")
                 return
-            player = player.strip("@")
+            player = player.strip("@").lower()
             short = short.lower()
             if player not in self.usersbyname.keys():
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="не знаю пользователя @" + player)
@@ -741,7 +814,7 @@ class Bot:
             if len(text.split()) != 2:
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неверный формат")
                 return
-            pl = text.split()[1].strip("@")
+            pl = text.split()[1].strip("@").lower()
             if pl not in self.usersbyname.keys():
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Не знаю такого")
                 return
@@ -756,13 +829,18 @@ class Bot:
             if len(text.split()) != 2:
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неверный формат")
                 return
-            pl = text.split()[1].strip("@")
+            pl = text.split()[1].strip("@").lower()
             if pl not in self.usersbyname.keys():
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Не знаю такого")
                 return
             self.ban(cur, self.usersbyname[pl], False)
             bot.sendMessage(chat_id=chat_id, text="Я выкинул его из списков")
             conn.commit()
+        elif text0 == "/online":
+            #if self.pinonline is None:
+             #   self.pinonline = PinOnline(self.squadids, bot)
+            pass
+
         else:
             if message.chat.type == "private":
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неизвестная команда... Сам придумал?")
@@ -842,31 +920,79 @@ class Bot:
                                         reply_markup = self.keyboards[player.keyboard], parse_mode='HTML')
                         return
                     elif text == "💽 Моя статистика":
-                        self.my_stat(bot, player)
+                        player.keyboard =KeyboardType.STATS
+                        bot.sendMessage(chat_id = chat_id, text = "Здесь ты можешь посмотреть свои статы, сохранить их или посмотреть прирост",
+                                        reply_markup = self.keyboards[player.keyboard], parse_mode='HTML')
                         return
                 elif  player.keyboard == KeyboardType.TOP:
+                    s = ""
+                    ctext = ""
                     if text == "🏅 Рейтинг":
-                        self.top(bot, user.id, user.username, chat_id, "", StatType.ALL, time=message.date)
+                        ctext = "top"
+                        s = self.top(bot, user.id, user.username, chat_id, "", StatType.ALL, time=message.date, textmode=True)
+                    elif text == "⚔️ Дамагеры":
+                        ctext = "rushtop"
+                        s = self.top(bot, user.id, user.username, chat_id, "", StatType.ATTACK, time=message.date, textmode=True)
+                    elif text == "❤️ Танки":
+                        ctext = "hptop"
+                        s = self.top(bot, user.id, user.username, chat_id, "", StatType.HP, time=message.date, textmode=True)
+                    elif text == "🤸🏽‍♂️ Ловкачи":
+                        ctext = "agtop"
+                        s = self.top(bot, user.id, user.username, chat_id, "", StatType.AGILITY, time=message.date, textmode=True)
+                    elif text == "🔫 Снайперы":
+                        ctext = "acctop"
+                        s = self.top(bot, user.id, user.username, chat_id, "", StatType.ACCURACY, time=message.date, textmode=True)
+                    elif text == "🗣 Дипломаты":
+                        ctext = "ortop"
+                        s = self.top(bot, user.id, user.username, chat_id, "", StatType.ORATORY, time=message.date, textmode=True)
+                    elif text == "📜 Полный список":
+                        ctext = "players"
+                        s = self.top(bot, user.id, user.username, chat_id, "", StatType.ALL, invisible=True, title="Игроки", time=message.date, textmode=True)
+                    if s != "":
+                        markup = self.top_markup(user, ctext)
+                        if markup != []:
+                            bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML', disable_web_page_preview=True,
+                                            reply_markup =telega.InlineKeyboardMarkup(markup))
+                        else:
+                            bot.sendMessage(chat_id = chat_id, text = s, parse_mode='HTML', disable_web_page_preview=True, reply_markup=None)
                         return
-                    if text == "⚔️ Дамагеры":
-                        self.top(bot, user.id, user.username, chat_id, "", StatType.ATTACK, time=message.date)
+                elif player.keyboard == KeyboardType.STATS:
+                    if text == '📱 Статистика':
+                        self.my_stat(bot, player, 5)
                         return
-                    if text == "❤️ Танки":
-                        self.top(bot, user.id, user.username, chat_id, "", StatType.HP, time=message.date)
+                    elif text == '🔝 Прирост':
+                        self.my_change(bot, player, 4)
                         return
-                    if text == "🤸🏽‍♂️ Ловкачи":
-                        self.top(bot, user.id, user.username, chat_id, "", StatType.AGILITY, time=message.date)
+                    elif text == '📲 Сохранить':
+                        markup = [telega.InlineKeyboardButton(text=str(i), callback_data="save " + str(i)) for i in range(1, 4)]
+                        bot.sendMessage(chat_id = chat_id, text = "Выбери ячейку для сохранения💾", parse_mode='HTML',
+                                        disable_web_page_preview=True, reply_markup = telega.InlineKeyboardMarkup([markup]))
                         return
-                    if text == "🔫 Снайперы":
-                        self.top(bot, user.id, user.username, chat_id, "", StatType.ACCURACY, time=message.date)
-                        return
-                    if text == "🗣 Дипломаты":
-                        self.top(bot, user.id, user.username, chat_id, "", StatType.ORATORY, time=message.date)
-                        return
-                    if text == "📜 Полный список":
-                        self.top(bot, user.id, user.username, chat_id, "", StatType.ALL, invisible=True, title="Игроки", time=message.date)
-                        return
-                bot.sendMessage(chat_id=chat_id, text="Это что-то странное🤔\nДумать об этом я конечно не буду 😝")
+                bot.sendMessage(chat_id=chat_id, text="Это что-то странное🤔\nДумать об этом я конечно не буду 😝",
+                                reply_markup = self.keyboards[player.keyboard])
+
+    def top_markup(self, user, ctext, name = ""):
+        sq = set()
+        plaeyer = self.users[user.id]
+        if user.id in self.admins:
+            sq = set(v for v in self.squadids.keys())
+        elif user.id in self.masters.keys():
+            sq = self.masters[user.id]
+        if plaeyer.squad:
+            sq.add(plaeyer.squad)
+        markup = []
+        if len(sq) > 0:
+            t0 = "⚙️Убежище 6"
+            if name == "":
+                t0 += " ✔️"
+            markup.append([telega.InlineKeyboardButton(text=t0, callback_data=ctext)])
+            for q in sq:
+                t0 = ""
+                if name == q:
+                    t0 = " ✔️"
+                markup.append(
+                    [telega.InlineKeyboardButton(text=self.squadnames[q] + t0, callback_data=str(ctext + " " + q))])
+        return markup
 
     def info(self, bot, player:Player):
         text = "Перед вами стат бот 6 убежища <i>и он крут😎</i>\nОзнакомиться с его командами вы можете по ссылке" \
@@ -874,16 +1000,113 @@ class Bot:
                "Бот создан во имя блага и процветания 6 убежища игроком @ant_ant\n" \
                "Так что если найдете в нем серьезные баги - пишите мне)\nЕсли есть желание помочь - можетье подкинуть" \
                " денег (https://qiwi.me/67f1c4c8-705c-4bb3-a8d3-a35717f63858) на поддержку бота или связаться со мной и записаться в группу альфа-тестеров\n" \
-               "\n<i>Играйте, общайтесь, радуйтесь жизни! Вместе мы сильнейшая фракция в игре!</i>\n\n<i>P.S.: Графический интерфейс еще не завершен. Дальше будет лучше</i>"
+               "\n<i>Играйте, общайтесь, радуйтесь жизни! Вместе мы сильнейшая фракция в игре!</i>\n\n<i>P.S.: Бот продолжает развиваться. Дальше будет лучше</i>"
         bot.sendMessage(chat_id = player.chatid, text=text,  parse_mode='HTML', disable_web_page_preview=True, reply_markup = self.keyboards[player.keyboard])
 
-    def my_stat(self, bot, player: Player):
-        self.stat(bot, player.id, player.chatid, 5)
+    def statchange_markup(self, n, text, player:Player):
+        buttons = ["1", "2", "3", "Прошлый", "Текущий"]
+        if text == "change":
+            buttons = buttons[:-1]
+        buttons[n] += " ✔️"
+        f = []
+        for i in range(3):
+            if player.stats[i] is not None:
+                f.append(telega.InlineKeyboardButton(text = buttons[i], callback_data= text + " " + str(i)))
+        l = []
+        for i in range(3, len(buttons)):
+            if player.stats[i] is not None:
+                l.append(telega.InlineKeyboardButton(text = buttons[i], callback_data= text + " " + str(i)))
+        res = []
+        if f != []:
+            res.append(f)
+        if l != []:
+            res.append(l)
+        return res
 
-    def handle_callback(self, bot, update):
+    def my_stat(self, bot, player: Player, n, id = None):
+        s = self.stat(bot, player.id, player.chatid, n, textmode=True)
+        markup = self.statchange_markup(n - 1, "stat", player)
+        if markup != []:
+            markup = telega.InlineKeyboardMarkup(markup)
+        else:
+            markup = None
+        if id is None:
+            bot.sendMessage(chat_id = player.chatid,  text = s, parse_mode='HTML', disable_web_page_preview=True, reply_markup=markup)
+        else:
+            bot.editMessageText(chat_id=player.chatid, message_id = id, text=s, parse_mode='HTML', disable_web_page_preview=True, reply_markup=markup)
+
+    def my_change(self, bot, player: Player, n, id = None):
+        s = self.change(bot, player.id, player.chatid, n, textmode=True)
+        markup = self.statchange_markup(n - 1, "change", player)
+        if markup != []:
+            markup = telega.InlineKeyboardMarkup(markup)
+        else:
+            markup = None
+        if id is None:
+            bot.sendMessage(chat_id = player.chatid,  text = s, parse_mode='HTML', disable_web_page_preview=True, reply_markup=markup)
+        else:
+            bot.editMessageText(chat_id=player.chatid, message_id = id, text=s, parse_mode='HTML', disable_web_page_preview=True, reply_markup=markup)
+
+    def handle_callback(self, bot, update:telega.Update):
         query = update.callback_query
         message = query.message
+        chat_id = message.chat_id
+        user = query.from_user
         data = query.data
+        if data == "":
+            return
+        conn = None
+        cur = None
+        try:
+            conn = sql.connect(self.database)
+            cur = conn.cursor()
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
+        text = data.split()[0]
+        name = ""
+        try:
+            name = data.split()[1]
+        except:
+            pass
+        player = self.users[user.id]
+        s = ""
+        if text == "top":
+            s = self.top(bot, user.id, user.username, chat_id, data, StatType.ALL, time=message.date, textmode=True)
+        elif text == "rushtop":
+            s = self.top(bot, user.id, user.username, chat_id, data, StatType.ATTACK, time=message.date, textmode=True)
+        elif text == "hptop":
+            s = self.top(bot, user.id, user.username, chat_id, data, StatType.HP, time=message.date, textmode=True)
+        elif text == "agtop":
+            s = self.top(bot, user.id, user.username, chat_id, data, StatType.AGILITY, time=message.date, textmode=True)
+        elif text == "acctop":
+            s = self.top(bot, user.id, user.username, chat_id, data, StatType.ACCURACY, time=message.date, textmode=True)
+        elif text == "ortop":
+            s = self.top(bot, user.id, user.username, chat_id, data, StatType.ORATORY, time=message.date, textmode=True)
+        elif text == "players":
+            s = self.top(bot, user.id, user.username, chat_id, data, StatType.ALL, invisible=True, title="Игроки",
+                         time=message.date, textmode=True)
+        elif text == "stat":
+            self.my_stat(bot, self.users[user.id], int(name) + 1, message.message_id)
+        elif text == "change":
+            self.my_change(bot, self.users[user.id], int(name) + 1, message.message_id)
+        elif text == "save":
+            n = int(name)
+            if n < 1  or n > 3:
+                return
+            ps = player.get_stats(4)
+            player.set_stats(cur, ps, n - 1)
+            conn.commit()
+            s = "Текущая статистика сохранена в ячейку №" + str(n)
+        if s != "":
+            markup = []
+            if "top" in text:
+                markup = self.top_markup(user, text, name)
+            if markup != []:
+                bot.editMessageText(chat_id=chat_id, message_id = message.message_id, text=s, parse_mode='HTML', disable_web_page_preview=True,
+                                reply_markup=telega.InlineKeyboardMarkup(markup))
+            else:
+                bot.editMessageText(chat_id=chat_id, message_id = message.message_id, text=s, parse_mode='HTML', disable_web_page_preview=True, reply_markup=None)
+
 
 if __name__ == "__main__":
     bot = Bot("***************","*************", "******")
