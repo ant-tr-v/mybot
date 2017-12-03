@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import random
+
 from telegram.ext import Updater
 from telegram.ext import Filters
 from telegram.ext import MessageHandler
@@ -17,6 +19,7 @@ class KeyboardType(Enum):
     DEFAULT = 0
     TOP = 1
     STATS = 2
+
 
 class StatType(Enum):
     ALL = 1
@@ -438,7 +441,7 @@ class PinOnlineKm:
 
 
 class Bot:
-    def __init__(self, database: str, token, bot_name: str):
+    def __init__(self, database: str, token: str, bot_name: str):
         conn = None
         self.database = database
         self.bot_name = bot_name
@@ -448,12 +451,14 @@ class Bot:
             print("Sql error occurred:", e.args[0])
         cur = conn.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS users"
-                    "(id INT, chatid INT, username TEXT, nic TEXT, squad TEXT, id1 INT, id2 INT, id3 INT, lid INT, cid INT)")
+                    "(id INT UNIQUE, chatid INT, username TEXT, nic TEXT, squad TEXT, id1 INT, id2 INT, id3 INT, lid INT, cid INT)")
         cur.execute('CREATE TABLE IF NOT EXISTS squads (name TEXT, short TEXT, chatid INT)')
         cur.execute('CREATE TABLE IF NOT EXISTS masters (id INTEGER, name TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS admins (id INTEGER)')
         cur.execute('CREATE TABLE IF NOT EXISTS raids (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS blacklist (id INTEGER)')
+        cur.execute('CREATE TABLE IF NOT EXISTS settings (id REFERENCES users(id) ON DELETE CASCADE, sex TEXT, keyboard INT, raidnotes INT)')
+        cur.execute('CREATE TABLE IF NOT EXISTS state (data TEXT)') #not The best solution ever but it will do
         cur.execute("SELECT * FROM admins")
         self.admins = set(r[0] for r in cur.fetchall())
         cur.execute("SELECT * FROM blacklist")
@@ -468,6 +473,7 @@ class Bot:
         self.squadnames = {}
         self.squadids = {}
         self.kick = {}
+        self.viva_six = {}
         self.pinns = [] #(squad, pinn, time) or (squad) to unp #TODO написать реализацию
         self.keyboards = {}#TODO написать админские клавиатуры
         self.keyboards[KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("💽 Моя статистика"),
@@ -712,14 +718,24 @@ class Bot:
             except:
                 goone = False
             if goone and ((user.id, date) not in self.raids):
-                self.raids.add( (user.id, date))
+                self.raids.add((user.id, date))
                 ps.raids += 1
                 ps.update_raids(cur, user.id, date)
                 if player.squad in self.squadnames.keys():
                     text = "<b>"+ player.nic + "</b> aka @" +player.username + " отличился на рейде \n"+ date + "\n" + tlines[-2] + "\n" + tlines[-1]
+                    text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                     #print(text)
-                    bot.sendMessage(chat_id=self.squadids[player.squad], text= text, parse_mode='HTML')
-                bot.sendMessage(chat_id=player.chatid, text="Засчитан успешный рейд", parse_mode='HTML')
+                    try:
+                        bot.sendMessage(chat_id=self.squadids[player.squad], text= text, parse_mode='HTML')
+                    except:
+                        try:
+                            bot.sendMessage(chat_id=player.chatid, text="Я не смог отправить сообщение в твой отряд\nЕсли хочешь - отправь его сам:\n\n" + text, parse_mode='HTML')
+                        except:
+                            pass
+                try:
+                    bot.sendMessage(chat_id=player.chatid, text="Засчитан успешный рейд", parse_mode='HTML')
+                except:
+                    pass
         player.set_stats(cur, ps, 4)
         player.update_text(cur)
         bot.sendMessage(chat_id=player.chatid, text="Я занес твои результаты")
@@ -794,7 +810,7 @@ class Bot:
                             s += "\n" + str(i) + ') <a href = "t.me/'+ name + '">'+ nic + ' </a>'
                     else:
                         s += "\n" + str(i) + ') <a href = "t.me/' + name + '">' + nic + ' </a>'
-                    if (not invisible) and (id in self.admins or name == username or type == StatType.ALL):
+                    if (not invisible) and (id in self.admins or name == username or type == StatType.ALL or type == StatType.RAIDS):
                         s+=": <b>" + str(val) + "</b>"
                     elif not invisible:
                         s += ": <b>" + str(val)[0] + "*"*(len(str(val)) - 1) + "</b>"
@@ -1098,6 +1114,19 @@ class Bot:
             self.ban(cur, self.usersbyname[pl], False)
             bot.sendMessage(chat_id=chat_id, text="Я выкинул его из списков")
             conn.commit()
+        elif text0 == "/expel":
+            pl = text.split()[1].strip("@").lower()
+            if pl not in self.usersbyname.keys():
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Не знаю такого")
+                return
+            player = self.users[self.usersbyname[pl]]
+            if (user.id not in self.admins) and (user.id not in self.masters.keys() and player.squad not in self.masters[
+                user.id]):
+                bot.sendMessage(chat_id=self.users[user.id].chatid,
+                                text="Сомневаюсь что ваших полномочий на это хватит...")
+                return
+            self.del_from_squad(cur, player.id)
+            bot.sendMessage(chat_id=chat_id, text="Больше он не в отряде")
         elif text0 == "/online":
             if user.id not in self.admins:
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
@@ -1139,6 +1168,14 @@ class Bot:
             if self.pinkm is None:
                 self.pinkm = PinOnline(self.squadids, bot)
             self.pinkm.copy_to(chat_id)
+        elif text0.lower() == "/viva_six":
+            if chat_id not in self.viva_six.keys():
+                self.viva_six[chat_id] = 0
+            if self.viva_six[chat_id] % 2 == 0:
+                bot.sendMessage(chat_id = chat_id, text = "/VIVA_SIX")
+            else:
+                bot.sendSticker(chat_id = chat_id, sticker = "CAADAgADawAD73zLFo43Bv0UZFkCAg")
+            self.viva_six[chat_id] += 1
         else:
             if message.chat.type == "private":
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неизвестная команда... Сам придумал?")
