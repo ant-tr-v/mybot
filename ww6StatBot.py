@@ -10,8 +10,10 @@ from telegram.ext import CallbackQueryHandler
 import telegram as telega
 import sqlite3 as sql
 import datetime
+import time
 import threading
 import time
+import json
 from enum import Enum
 
 
@@ -290,7 +292,7 @@ class PinOnline:
 
 
 class PinOnlineKm:
-    def __init__(self, squadids: dict, bot):
+    def __init__(self, squadids: dict, bot, database):
         self.bot = bot
         self.mes = ""
         self.squadids = squadids
@@ -306,6 +308,8 @@ class PinOnlineKm:
         self.copies = {}
         self.usersbyname = {}
         self.chatm = {}
+        self.db = database
+
 
     def pin(self, sq, admin_chat, chatmes=""):
         if not admin_chat in self.connections.keys():
@@ -435,6 +439,10 @@ class PinOnlineKm:
                 self.bot.editMessageText(chat_id=con[0], message_id=con[1], text=text, parse_mode='HTML')
             except:
                 pass
+        #jtext = json.dumps([self.mes, self.squadids, self.squabyid, self.users, self.oderedkm, self.kms,
+         #                   self.kmspw, self.power, self.names, self.messages, self.connections, self.copies,
+          #                  self.usersbyname, self.chatm, self.db])
+        #conn = sql.connect(self.db)
 
     def close(self):
         for m in self.messages.items():
@@ -448,6 +456,28 @@ class PinOnlineKm:
                 self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
             except:
                 pass
+
+
+def send_split(bot, msg, chat_id, N):
+    split = msg.split('\n')
+    for i in range(0, len(split), N):
+        time.sleep(1./30)
+        bot.sendMessage(chat_id=chat_id, text='\n'.join(split[i:min(i+N, len(split))]), parse_mode='HTML', disable_web_page_preview=True)
+
+
+def pin(bot, chat_id, text, uid):
+    id = -1
+    try:
+        id = bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML').message_id
+    except:
+        bot.sendMessage(chat_id=uid, text="Не удалось доставить сообщение")
+    time.sleep(1)
+    try:
+        bot.pinChatMessage(chat_id=chat_id, message_id=id)
+    except:
+        bot.sendMessage(chat_id=uid, text="Я не смог запинить((")
+        return
+    bot.sendMessage(chat_id=uid, text="Готово\nСообщение в пине")
 
 
 class Bot:
@@ -489,8 +519,8 @@ class Bot:
         self.keyboards = {}  # TODO написать админские клавиатуры
         self.keyboards[KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("💽 Моя статистика"),
                                                                             telega.KeyboardButton("🎖 Топы")],
-                                                                            [telega.KeyboardButton("👻 О боте"),
-                                                                             telega.KeyboardButton("👨‍💻 О жизни")]],
+                                                                           [telega.KeyboardButton("👻 О боте"),
+                                                                            telega.KeyboardButton("👨‍💻 О жизни")]],
                                                                           resize_keyboard=True)
         self.keyboards[KeyboardType.TOP] = telega.ReplyKeyboardMarkup(
             [[telega.KeyboardButton("🏅 Рейтинг"), telega.KeyboardButton("⚔️ Дамагеры"),
@@ -592,17 +622,31 @@ class Bot:
 
     def add_master(self, cur, bot, id, adminid, sq):
         sq = sq.lower()
-        if (sq not in self.squadnames.keys()):
+        if sq not in self.squadnames.keys():
             bot.sendMessage(chat_id=self.users[adminid].chatid, text="Нет такого отряда")
-            return
+            return False
         if (adminid not in self.admins) and ((adminid not in self.masters.keys()) or (sq not in self.masters[adminid])):
             bot.sendMessage(chat_id=self.users[adminid].chatid, text="У вас нет на это прав. Возьмите их у Антона")
-            return
+            return False
         if (id in self.masters.keys()) and sq in self.masters[id]:
             bot.sendMessage(chat_id=self.users[adminid].chatid, text="Да он и так командир)")
-            return
+            return False
         cur.execute("INSERT INTO masters(id, name) VALUES (?, ?)", (id, sq))
-        self.masters[id].add(sq)
+        if id not in self.masters.keys():
+            self.masters[id] = [sq]
+        else:
+            self.masters[id].add(sq)
+        return True
+
+    def del_master(self, cur, bot, id, adminid):
+        if adminid not in self.admins:
+            bot.sendMessage(chat_id=self.users[adminid].chatid, text="У вас нет на это прав.\nНи малейших")
+            return False
+        if id in self.masters.keys():
+            del (self.masters[id])
+            cur.execute("DELETE FROM masters WHERE id = ?", (id,))
+            return True
+        return False
 
     def add_squad(self, cur, bot, master, short, title, id, chat_id):
         if id not in self.admins:
@@ -632,7 +676,7 @@ class Bot:
         if ps is None:
             return "Эта ячейка памяти ещё пуста 🙃"
         s += "<b>От </b>" + str(ps.time) + "\n" \
-             "<b>\nЗдоровье:          </b>" + str(ps.hp) + \
+                                           "<b>\nЗдоровье:          </b>" + str(ps.hp) + \
              "<b>\nУрон:                   </b>" + str(ps.attack) + \
              "<b>\nБроня:                 </b>" + str(ps.deff) + \
              "<b>\nСила:                   </b>" + str(ps.power) + \
@@ -717,7 +761,7 @@ class Bot:
                     ps.power = int(m.group('val'))
                 m = re.search(r'Меткость:[\s](?P<val>[\d]+)', tlines[i])
                 if m:
-                    ps.accuracy= int(m.group('val'))
+                    ps.accuracy = int(m.group('val'))
                 m = re.search(r'Харизма:[\s](?P<val>[\d]+)', tlines[i])
                 if m:
                     ps.oratory = int(m.group('val'))
@@ -737,13 +781,14 @@ class Bot:
         if oldps is not None:
             player.set_stats(cur, oldps, 3)
             ps.raids = oldps.raids
-        if "Рейд в " in tlines[-3]:
+        m = re.search(r'(Рейд[\s]+(?P<msg>в[\s]+(?P<hour>[\d]+):[\d]+.*\n.*\n.*))', text)
+        if m:
             goone = True
             date = message.forward_date
             try:
-                time = tlines[-3].split()[-1]
+                hour = m.group('hour')
                 ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
-                                          hour=int(time.split(':')[0]) % 24)
+                                          hour=int(hour) % 24)
                 if message.date - ddate < datetime.timedelta(milliseconds=10):
                     ddate = ddate - datetime.timedelta(days=1)
                 date = str(ddate).split('.')[0]
@@ -754,8 +799,7 @@ class Bot:
                 ps.raids += 1
                 ps.update_raids(cur, user.id, date)
                 if player.squad in self.squadnames.keys():
-                    text = "<b>" + player.nic + "</b> aka @" + player.username + " отличился на рейде \n" + date + "\n" + \
-                           tlines[-2] + "\n" + tlines[-1]
+                    text = "<b>" + player.nic + "</b> aka @" + player.username + " отличился на рейде " + m.group('msg')
                     text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                     try:
                         bot.sendMessage(chat_id=self.squadids[player.squad], text=text, parse_mode='HTML')
@@ -852,7 +896,7 @@ class Bot:
                     else:
                         s += "\n" + str(i) + ') <a href = "t.me/' + name + '">' + nic + ' </a>'
                     if (not invisible) and (
-                                    id in self.admins or name == username or type == StatType.ALL or type == StatType.RAIDS):
+                            id in self.admins or name == username or type == StatType.ALL or type == StatType.RAIDS):
                         s += ": <b>" + str(val) + "</b>"
                     elif not invisible:
                         s += ": <b>" + str(val)[0] + "*" * (len(str(val)) - 1) + "</b>"
@@ -863,11 +907,15 @@ class Bot:
         if (id in self.admins or (con1 and cap)) and not invisible:
             s += "\n\nОбщий счет: " + str(sum)
         if not textmode:
-            bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML', disable_web_page_preview=True)
+            N = 50
+            if(invisible):
+                N = 100
+            send_split(bot,s, chat_id, N)
+            #bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML', disable_web_page_preview=True)
         else:
             return s
 
-    def list_squads(self, bot, chat_id, show_pin = False):
+    def list_squads(self, bot, chat_id, show_pin=False):
         text = ""
         for sqshort, sqname in self.squadnames.items():
             text += "<b>" + sqname + "</b> aka <i>" + sqshort + "</i>"
@@ -875,26 +923,12 @@ class Bot:
                 if self.pinkm and sqshort in self.pinkm.chatm.keys():
                     text += " \t✅"
                 else:
-                    text+= " \t❌"
+                    text += " \t❌"
             text += "\n"
         bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True)
 
-    def pin(self, bot, chat_id, text, uid):
-        id = -1
-        try:
-            id = bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML').message_id
-        except:
-            bot.sendMessage(chat_id=uid, text="Не удалось доставить сообщение")
-        time.sleep(1)
-        try:
-            bot.pinChatMessage(chat_id=chat_id, message_id=id)
-        except:
-            bot.sendMessage(chat_id=uid, text="Я не смог запинить((")
-            return
-        bot.sendMessage(chat_id=uid, text="Готово\nСообщение в пине")
-
-    def demand_squads(self, text, user, bot):
-        if len(text.split()) <= 2:
+    def demand_squads(self, text, user, bot, allow_empty=False):
+        if len(text.split()) <= 1:
             bot.sendMessage(chat_id=self.users[user.id].chatid, text="сообщения-то и нехватает")
             return None, None
         split = text.split()
@@ -907,9 +941,10 @@ class Bot:
                 start = text.find(word)
                 break
         if not sqs:
-            bot.sendMessage(chat_id=self.users[user.id].chatid,
-                            text="Весело наверное писать в несуществующий отряд")
-            return None, None
+            if not allow_empty:
+                bot.sendMessage(chat_id=self.users[user.id].chatid,
+                                text="Весело наверное писать в несуществующий отряд")
+            return [], text[start:]
         if user.id not in self.admins and user.id not in self.masters.keys() and not any(sq in self.masters[
             user.id] for sq in sqs):
             bot.sendMessage(chat_id=self.users[user.id].chatid,
@@ -921,18 +956,19 @@ class Bot:
             return None, None
         return sqs, text[start:]
 
-    def demand_ids(self, text, user, bot, offset=1, all = False):
+    def demand_ids(self, text, user, bot, offset=1, all=False, allow_empty=False):
         """не проверяет на права администратора
         может вернуть пустую строку"""
-        if len(text.split()) <= 2:
+        if len(text.split()) <= 1:
             bot.sendMessage(chat_id=self.users[user.id].chatid, text="Чего-то здесь не хватает")
             return None, None
         ids = []
         start = -1
         split = text.split()
         for word in split[offset:]:
-            if word.strip('@').lower() in self.usersbyname.keys():
-                ids.append(self.usersbyname[word.strip('@').lower()])
+            name = word.strip('@').lower()
+            if name in self.usersbyname.keys():
+                ids.append(self.usersbyname[name])
             elif not all:
                 start = text.find(word)
                 break
@@ -940,7 +976,7 @@ class Bot:
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
                                 text="Не знаю игрока по имени @" + name)
 
-        if not ids:
+        if not ids and not allow_empty:
             bot.sendMessage(chat_id=self.users[user.id].chatid,
                             text="Я не нашёл ни одного юзернейма")
         return text[start:], ids
@@ -982,23 +1018,48 @@ class Bot:
                 return
             self.change(bot, user.id, chat_id, n)
         elif text0 == '/stat':
-            name = ""
-            try:
-                name = text.split()[1].strip("@").lower()
-            except ImportError:
-                bot.sendMessage(chat_id=chat_id, text="А чьи статы-то?")
-                return
-            if name not in self.usersbyname.keys():
-                # print(name)
-                bot.sendMessage(chat_id=chat_id, text="Кто это вообще такой? Я его не знаю...")
-                return
-            if (user.id not in self.admins) and (
-                            user.id not in self.masters.keys() or self.users[self.usersbyname[name]].squad not in
+            _, ids = self.demand_ids(text, user=user, bot=bot, all=True)
+            for uid in ids:
+                if (user.id not in self.admins) and (
+                        user.id not in self.masters.keys() or self.users[uid].squad not in
                         self.masters[
                             user.id]):
-                bot.sendMessage(chat_id=chat_id, text="Любопытство не порок\nНо меру то знать надо...")
+                    bot.sendMessage(chat_id=chat_id, text="Любопытство не порок\nНо меру то знать надо...\nСтатистика @"
+                                                          + self.users[uid].username + " тебе не доступна")
+                    return
+                self.stat(bot, uid, chat_id, 5)
+        elif text0 == '/look_up':
+            _, ids = self.demand_ids(text, user=user, bot=bot, all=True, offset=2)
+            N = 5
+            if ids:
+                N = int(text.split()[1])
+            else:
                 return
-            self.stat(bot, self.usersbyname[name], chat_id, 5)
+            for uid in ids:
+                if (user.id not in self.admins) and (
+                        user.id not in self.masters.keys() or self.users[uid].squad not in
+                        self.masters[
+                            user.id]):
+                    bot.sendMessage(chat_id=chat_id, text="Любопытство не порок\nНо меру то знать надо...\nСтатистика @"
+                                                          + self.users[uid].username + " тебе не доступна")
+                    return
+                self.stat(bot, uid, chat_id, N)
+        elif text0 == '/check_up':
+            _, ids = self.demand_ids(text, user=user, bot=bot, all=True, offset=2)
+            N = 5
+            if ids:
+                N = int(text.split()[1])
+            else:
+                return
+            for uid in ids:
+                if (user.id not in self.admins) and (
+                        user.id not in self.masters.keys() or self.users[uid].squad not in
+                        self.masters[
+                            user.id]):
+                    bot.sendMessage(chat_id=chat_id, text="Любопытство не порок\nНо меру то знать надо...\nСтатистика @"
+                                                          + self.users[uid].username + " тебе не доступна")
+                    return
+                self.change(bot, uid, chat_id, N)
         elif text0[:-1] == '/save' and 1 <= int(text0[-1]) <= 3:
             player = self.users[user.id]
             ps = player.get_stats(4)
@@ -1023,7 +1084,7 @@ class Bot:
             self.top(bot, user.id, user.username, chat_id, text, StatType.ALL, invisible=True, title="Игроки",
                      time=message.date)
         elif text0 == "/new_squad" and (user.id in self.admins) and (
-                        message.chat.type == "group" or message.chat.type == "supergroup"):
+                message.chat.type == "group" or message.chat.type == "supergroup"):
             short, master = "", ""
             try:
                 short, master = text.split()[1:3]
@@ -1047,36 +1108,38 @@ class Bot:
             if master not in self.usersbyname.keys():
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="не знаю пользователя @" + master)
                 return
-            self.add_master(cur, bot, self.usersbyname[master], user.id, short)
+            if self.add_master(cur, bot, self.usersbyname[master], user.id, short):
+                bot.sendMessage(chat_id=chat_id, text="Теперь @" + master +" командир <b>" + short +"</b>", parse_mode='HTML')
+            conn.commit()
+        elif text0 == '/disgrace':
+            _, ids = self.demand_ids(text, user=user, bot=bot, all=True)
+            for uid in ids:
+                if self.del_master(cur, bot, uid, user.id):
+                    bot.sendMessage(chat_id=chat_id, text="Больше он не командир\nИ вообще никто")
             conn.commit()
         elif text0 == "/add":
-            short, player = "", ""
-            try:
-                short, player = text.split()[1:3]
-            except ValueError:
-                bot.sendMessage(id=self.users[user.id].chatid, text="Неверный формат команды")
+            _, ids = self.demand_ids(text, user=user, bot=bot, all=True, offset=2)
+            short = ""
+            if ids:
+                short = text.split()[1]
+            else:
                 return
-            player = player.strip("@").lower()
-            short = short.lower()
-            if player not in self.usersbyname.keys():
-                bot.sendMessage(chat_id=self.users[user.id].chatid, text="не знаю пользователя @" + player)
-                return
-            if short not in self.squadnames.keys():
-                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Не знаю такого отряда")
-                return
-            if (user.id not in self.admins) and (
-                            user.id not in self.masters.keys() or short not in self.masters[user.id]):
-                bot.sendMessage(chat_id=chat_id, text="У тебя нет такой власти")
-                return
-            self.add_to_squad(cur, self.usersbyname[player], short)
-            bot.sendMessage(chat_id=chat_id,
-                            text=("@" + player + " теперь в отряде <b>" + self.squadnames[short] + "</b>"),
-                            parse_mode='HTML')
+            for uid in ids:
+                if (user.id not in self.admins) and ((
+                        user.id not in self.masters.keys() or short not in self.masters[user.id])
+                                                     or (self.users[uid].squad != "" and self.users[uid].squad != short)):
+                    bot.sendMessage(chat_id=chat_id, text="У тебя нет такой власти")
+                    return
+                self.add_to_squad(cur, uid, short)
+                bot.sendMessage(chat_id=chat_id,
+                                text=("@" + self.users[uid].username + " теперь в отряде <b>" + self.squadnames[short] + "</b>"),
+                                parse_mode='HTML')
             conn.commit()
         elif text0 == "/echo":
-            sqs, msg = self.demand_squads(text, user, bot)
+            sqs, msg = self.demand_squads(text, user, bot, allow_empty=True)
             if sqs:
                 for pl in self.users.values():
+                    time.sleep(1. / 30)
                     for sq in sqs:
                         if sq is None or sq == pl.squad:
                             try:
@@ -1085,7 +1148,16 @@ class Bot:
                                 bot.sendMessage(chat_id=self.users[user.id].chatid,
                                                 text="Пользователь @" + pl.username + " отключил бота")
                             break
-            bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
+            elif msg:
+                for pl in self.users.values():
+                    time.sleep(1. / 30)
+                    try:
+                        bot.sendMessage(chat_id=pl.chatid, text=msg)
+                    except:
+                        bot.sendMessage(chat_id=self.users[user.id].chatid,
+                                    text="Пользователь @" + pl.username + " отключил бота")
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
         elif text0 == "/echo-s":
             sqs, msg = self.demand_squads(text, user, bot)
             if sqs:
@@ -1096,7 +1168,7 @@ class Bot:
             sqs, msg = self.demand_squads(text, user, bot)
             if sqs:
                 for sq in sqs:
-                    self.pin(bot=bot, chat_id=self.squadids[sq], text=msg, uid=chat_id)
+                    pin(bot=bot, chat_id=self.squadids[sq], text=msg, uid=chat_id)
         elif text0 == "/rename":
             if user.id not in self.admins:
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
@@ -1189,7 +1261,7 @@ class Bot:
                                 text="Что-то не вижу я у тебя админки?\nГде потерял?")
                 return
             if self.pinkm is None:
-                self.pinkm = PinOnlineKm(self.squadids, bot)
+                self.pinkm = PinOnlineKm(self.squadids, bot, self.database)
             sqs, msg = self.demand_squads(text, user, bot)
             if sqs:
                 for sq in sqs:
@@ -1252,7 +1324,7 @@ class Bot:
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
         if (message.forward_from is not None) and (message.forward_from.id == 430930191) and (
-                        '🗣' in text and '❤️' in text and '🔥' in text and '⚔️' in text) and message.chat.type == "private":
+                '🗣' in text and '❤️' in text and '🔥' in text and '⚔️' in text) and message.chat.type == "private":
             if user.id not in self.users.keys():
                 if "Убежище 6" not in text:
                     bot.sendMessage(chat_id=chat_id, text="А ты фракцией не ошибся?")
@@ -1413,9 +1485,9 @@ class Bot:
         bot.sendMessage(chat_id=player.chatid, text=text, parse_mode='HTML', disable_web_page_preview=True,
                         reply_markup=self.keyboards[player.keyboard])
 
-    def guide(self, bot, player: Player, chat_id = None, private=False):
-        text =  "<b>Неплохой FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3\n"\
-                "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n"
+    def guide(self, bot, player: Player, chat_id=None, private=False):
+        text = "<b>Неплохой FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3\n" \
+               "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n"
         if chat_id is None:
             chat_id = player.chatid
         if private:
@@ -1424,7 +1496,7 @@ class Bot:
                             reply_markup=self.keyboards[player.keyboard])
         else:
             bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=False,
-                        reply_markup=telega.ReplyKeyboardRemove())
+                            reply_markup=telega.ReplyKeyboardRemove())
 
     def statchange_markup(self, n, text, player: Player):
         buttons = ["1", "2", "3", "Прошлый", "Текущий"]
