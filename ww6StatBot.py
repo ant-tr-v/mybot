@@ -439,10 +439,6 @@ class PinOnlineKm:
                 self.bot.editMessageText(chat_id=con[0], message_id=con[1], text=text, parse_mode='HTML')
             except:
                 pass
-        #jtext = json.dumps([self.mes, self.squadids, self.squabyid, self.users, self.oderedkm, self.kms,
-         #                   self.kmspw, self.power, self.names, self.messages, self.connections, self.copies,
-          #                  self.usersbyname, self.chatm, self.db])
-        #conn = sql.connect(self.db)
 
     def close(self):
         for m in self.messages.items():
@@ -904,6 +900,8 @@ class Bot:
                 if i == 5 and not invisible:
                     s += "\n"
                 i += 1
+                if textmode and i == 101:
+                    break
         if (id in self.admins or (con1 and cap)) and not invisible:
             s += "\n\nОбщий счет: " + str(sum)
         if not textmode:
@@ -911,7 +909,6 @@ class Bot:
             if(invisible):
                 N = 100
             send_split(bot,s, chat_id, N)
-            #bot.sendMessage(chat_id=chat_id, text=s, parse_mode='HTML', disable_web_page_preview=True)
         else:
             return s
 
@@ -1298,6 +1295,10 @@ class Bot:
         elif text0 == "/dungs":
             text = "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n"
             bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=False)
+        elif text0 == "/rfm":
+            text = "<b>Гайд для новичка: </b> http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and" \
+                   "-co-03-15\n "
+            bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=False)
         elif text0 == '/squads':
             self.list_squads(bot, chat_id, (user.id in self.admins))
         else:
@@ -1376,7 +1377,7 @@ class Bot:
                         self.info(bot, player)
                         return
                     elif text == "👨‍💻 О жизни":
-                        self.guide(bot, player, private=True)
+                        self.guide(bot, player)
                         return
                     elif text == "🎖 Топы":
                         player.keyboard = KeyboardType.TOP
@@ -1485,18 +1486,15 @@ class Bot:
         bot.sendMessage(chat_id=player.chatid, text=text, parse_mode='HTML', disable_web_page_preview=True,
                         reply_markup=self.keyboards[player.keyboard])
 
-    def guide(self, bot, player: Player, chat_id=None, private=False):
-        text = "<b>Неплохой FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3\n" \
-               "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n"
+    def guide(self, bot, player: Player, chat_id=None):
+        text =  "<b>FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3 и\n" \
+                "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n" \
+                "От @vladvertov\n\n<b>Гайд для новичка </b> " \
+                "http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and-co-03-15\n От @Quapiam"
         if chat_id is None:
             chat_id = player.chatid
-        if private:
-            text += "<i>Автор гайдов</i> @vladvertov"
-            bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True,
-                            reply_markup=self.keyboards[player.keyboard])
-        else:
-            bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=False,
-                            reply_markup=telega.ReplyKeyboardRemove())
+        bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True,
+                        reply_markup=self.keyboards[player.keyboard])
 
     def statchange_markup(self, n, text, player: Player):
         buttons = ["1", "2", "3", "Прошлый", "Текущий"]
