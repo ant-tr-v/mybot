@@ -720,6 +720,7 @@ class Bot:
         player = self.users[user.id]
         text = message.text.strip(" \n\t")
         player.username = user.username
+        self.usersbyname[player.username.lower()] = player.id
         self.usersbyname[user.username] = user.id
         tlines = text.split("\n")
         ps = PlayerStat(cur)
@@ -768,7 +769,6 @@ class Bot:
         time = datetime.datetime.now()
         if player.nic == "" or time - message.forward_date < datetime.timedelta(seconds=15):
             player.nic = nic
-            self.usersbyname[nic] = user.id
         elif player.nic != nic:
             bot.sendMessage(chat_id=player.chatid,
                             text="🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n"
@@ -974,6 +974,9 @@ class Bot:
             return None, None
         return sqs, text[start:]
 
+    def no_permission(self, user, sq):
+        return (user.id not in self.admins) and (user.id not in self.masters.keys() or sq not in self.masters[user.id])
+
     def demand_ids(self, text, user, bot, offset=1, all=False, allow_empty=False, limit=None):
         """не проверяет на права администратора
         может вернуть пустую строку"""
@@ -1011,7 +1014,7 @@ class Bot:
         if sq not in self.squadids.keys():
             bot.sendMessage(chat_id=chat_id, text='Нет такого отряда')
             return
-        if (user.id not in self.admins) and (user.id not in self.masters.keys() or sq not in self.masters[user.id]):
+        if self.no_permission(user, sq):
             bot.sendMessage(chat_id=chat_id, text='Ты явно права не имеешь...')
             return
         freeusr = []
@@ -1025,16 +1028,15 @@ class Bot:
             elif pl.squad == sq:
                 average.append('@{0} (<b>{1}</b>)-\t<b>{2}</b>'.format(pl.username, pl.nic, str(days)))
             else:
-                difsq.append('@{0} (<b>{1}</b>)'.format(pl.username, pl.nic))
+                difsq.append('@{0} (<b>{1}</b>) - <b>{2}</b>'.format(pl.username, pl.nic, self.squadnames[pl.squad]))
         res = ""
         if freeusr:
             res += 'Свободные игроки:\n\t' + '\n\t'.join(freeusr) + '\n\t'
         if difsq:
             res += 'Игроки из других отрядов:\n\t' + '\n\t'.join(difsq) + '\n\t'
-        if difsq:
+        if average:
             res += 'Игроки из этого отряда:\n\t' + '\n\t'.join(average) + '\n\t'
         bot.sendMessage(chat_id=chat_id, text=res, parse_mode='HTML')
-
 
     def handle_command(self, cur, conn, bot, message):
         text = message.text
@@ -1075,9 +1077,7 @@ class Bot:
         elif text0 == '/stat':
             _, ids = self.demand_ids(text, user=user, bot=bot, all=True)
             for uid in ids:
-                if (user.id not in self.admins) and (
-                        user.id not in self.masters.keys() or self.users[uid].squad not in
-                        self.masters[user.id]):
+                if self.no_permission(user, self.users[uid].squad):
                     bot.sendMessage(chat_id=chat_id, text="Любопытство не порок\nНо меру то знать надо...\nСтатистика @"
                                                           + self.users[uid].username + " тебе не доступна")
                     return
@@ -1090,10 +1090,7 @@ class Bot:
             else:
                 return
             for uid in ids:
-                if (user.id not in self.admins) and (
-                        user.id not in self.masters.keys() or self.users[uid].squad not in
-                        self.masters[
-                            user.id]):
+                if self.no_permission(user, self.users[uid].squad):
                     bot.sendMessage(chat_id=chat_id, text="Любопытство не порок\nНо меру то знать надо...\nСтатистика @"
                                                           + self.users[uid].username + " тебе не доступна")
                     return
@@ -1106,10 +1103,7 @@ class Bot:
             else:
                 return
             for uid in ids:
-                if (user.id not in self.admins) and (
-                        user.id not in self.masters.keys() or self.users[uid].squad not in
-                        self.masters[
-                            user.id]):
+                if self.no_permission(user, self.users[uid].squad):
                     bot.sendMessage(chat_id=chat_id, text="Любопытство не порок\nНо меру то знать надо...\nСтатистика @"
                                                           + self.users[uid].username + " тебе не доступна")
                     return
@@ -1236,7 +1230,7 @@ class Bot:
                 return
             player = self.users[self.usersbyname[pl]]
             sq = player.squad
-            if (user.id not in self.admins) and (user not in self.masters.keys() or sq not in self.masters[user.id]):
+            if self.no_permission(user, sq):
                 bot.sendMessage(chat_id=chat_id, text="Твоих прав на это не хватит\nТочно знаю")
                 return
             player.nic = m.group('name')
@@ -1282,9 +1276,7 @@ class Bot:
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Не знаю такого")
                 return
             player = self.users[self.usersbyname[pl]]
-            if (user.id not in self.admins) and (
-                    user.id not in self.masters.keys() or player.squad not in self.masters[
-                user.id]):
+            if self.no_permission(user, player.squad):
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
                                 text="Сомневаюсь что ваших полномочий на это хватит...")
                 return
@@ -1360,6 +1352,26 @@ class Bot:
             self.who_is(bot, chat_id, text)
         elif text0 == '/whospy':
             self.who_spy(bot, chat_id, user, text)
+        elif text0 == '/raidson':
+            m = re.match(r'^[\S]+[\s]+(?P<g>[\S]+)[\s]+(?P<n>[\d]+)', text)
+            if not m:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неверный формат команды")
+                return
+            sq = m.group('g')
+            n = int(m.group('n'))
+            if self.no_permission(user, sq):
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Недостаточно власти\nНужно больше власти")
+                return
+            start = str(datetime.datetime.now() - datetime.timedelta(days=n))
+            raids = []
+            for pl in self.users.values():
+                if pl.squad == sq:
+                    cur.execute(r'select * from raids where id = ? and time > ?', (pl.id, start))
+                    raids.append((len(cur.fetchall()), pl.nic, pl.username))
+            raids.sort(reverse=True)
+            msg = "Топ рейдеров\nначиеая с " + start.split('.')[0] + "\n" + \
+                  "\n".join(['<a href = "t.me/{0}">{1}</a> <b>{2}</b>'.format(x[2], x[1], x[0]) for x in raids])
+            bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
         else:
             if message.chat.type == "private":
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неизвестная команда... Сам придумал?")
