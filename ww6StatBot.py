@@ -930,8 +930,8 @@ class Bot:
             bot.sendMessage(chat_id=chat_id, text="Я таких не знаю\n¯\_(ツ)_/¯")
             return
         res = ['@' + u for u in res]
-        bot.sendMessage(chat_id=chat_id, text=("Похоже что ник <b>{0}</b> принадлежит\n{1}".format(name, ' или '.join(res))),
-                        parse_mode='HTML')
+        bot.sendMessage(chat_id=chat_id, text=("Похоже что ник <b>{0}</b> принадлежит\n{1}".format(
+            name, ' или '.join(res))), parse_mode='HTML')
 
     def list_squads(self, bot, chat_id, show_pin=False):
         text = ""
@@ -980,6 +980,7 @@ class Bot:
     def demand_ids(self, text, user, bot, offset=1, all=False, allow_empty=False, limit=None):
         """не проверяет на права администратора
         может вернуть пустую строку"""
+        # TODO all, limit and allow_empty combination is not intuitive
         if len(text.split()) <= offset:
             bot.sendMessage(chat_id=self.users[user.id].chatid, text="Чего-то здесь не хватает")
             return None, None
@@ -1003,7 +1004,7 @@ class Bot:
 
         if not ids and not allow_empty:
             bot.sendMessage(chat_id=self.users[user.id].chatid,
-                            text="Я не нашёл ни одного юзернейма")
+                            text="Я не нашёл ни одного знакомого юзернейма")
         return text[start:], ids
 
     def who_spy(self, bot, chat_id, user, text):
@@ -1022,7 +1023,8 @@ class Bot:
         average = []
         for uid in ids:
             pl = self.users[uid]
-            days = (datetime.datetime.now() - datetime.datetime.strptime(str(pl.stats[4].time).split('.')[0], "%Y-%m-%d %H:%M:%S")).days
+            days = (datetime.datetime.now() - datetime.datetime.strptime(str(pl.stats[4].time).split('.')[0],
+                                                                         "%Y-%m-%d %H:%M:%S")).days
             if pl.squad == '':
                 freeusr.append('@{0} (<b>{1}</b>)'.format(pl.username, pl.nic))
             elif pl.squad == sq:
@@ -1317,9 +1319,11 @@ class Bot:
                                 text="Что-то не вижу я у тебя админки?\nГде потерял?")
                 return
             if self.pinkm is None:
+                bot.sendMessage(chat_id=chat_id, text="Активных пинов нет")
                 return
             self.pinkm.close()
             self.pinkm = None
+            bot.sendMessage(chat_id=chat_id, text="Пины закрыты")
         elif text0 == "/copykm":
             if user.id not in self.admins:
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
@@ -1366,12 +1370,22 @@ class Bot:
             raids = []
             for pl in self.users.values():
                 if pl.squad == sq:
-                    cur.execute(r'select * from raids where id = ? and time > ?', (pl.id, start))
+                    cur.execute(r'SELECT * FROM raids WHERE id = ? AND time > ?', (pl.id, start))
                     raids.append((len(cur.fetchall()), pl.nic, pl.username))
             raids.sort(reverse=True)
-            msg = "Топ рейдеров\nначиеая с " + start.split('.')[0] + "\n" + \
+            msg = "Топ рейдеров отряда <b>" + self.squadnames[sq] + "</b>\nНачиная с " + start.split('.')[0] + "\n" + \
                   "\n".join(['<a href = "t.me/{0}">{1}</a> <b>{2}</b>'.format(x[2], x[1], x[0]) for x in raids])
             bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
+        elif text0 == '/info':
+            _, ids = self.demand_ids(text, user, bot, all=True, allow_empty=True)
+            print(ids)
+            if not ids:
+                return
+            for uid in ids:
+                pl = self.users[uid]
+                sq = "из отряда <b>{}</b>".format(self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
+                text = "Это <b>{0}</b> {1}".format(pl.nic, sq)
+                bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True)
         else:
             if message.chat.type == "private":
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неизвестная команда... Сам придумал?")
@@ -1685,6 +1699,9 @@ class Bot:
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
             return
         elif text == "onkm":
+            if not self.pinkm:
+                bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
+                return
             if not self.pinkm.add(player, chat_id, name):
                 self.pinkm.delete(player)
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
