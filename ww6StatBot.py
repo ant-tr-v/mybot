@@ -309,6 +309,9 @@ class PinOnlineKm:
         self.usersbyname = {}
         self.chatm = {}
         self.db = database
+        self.cooldownstate = False
+        self.planUpdate = False
+        self.chats_to_update = set()
 
     def pin(self, sq, admin_chat, chatmes=""):
         if not admin_chat in self.connections.keys():
@@ -320,7 +323,8 @@ class PinOnlineKm:
         self.chatm[sq] = chatmes
         if self.squadids[sq] in self.messages.keys():
             self.bot.sendMessage(chat_id=admin_chat, text="Пин уже в отряде " + sq)
-            self.update_chat(self.squadids[sq])
+            self.chats_to_update.add(self.squadids[sq])
+            self.update()
             return
         kms = [x for x in self.oderedkm]
         markup = [[telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in kms[:3]],
@@ -352,7 +356,7 @@ class PinOnlineKm:
         self.power[sq] += ps.attack + ps.hp + ps.deff + ps.agility + 10
         self.kmspw[km] += ps.attack + ps.hp + ps.deff + ps.agility + 10
         self.names[sq].add(player.username)
-        self.update_chat(chat_id)
+        self.chats_to_update.add(chat_id)
         self.update()
         return True
 
@@ -367,7 +371,7 @@ class PinOnlineKm:
         self.names[sq].discard(player.username)
         self.kms[km].discard(player.username)
         del (self.users[player.id])
-        self.update_chat(self.squadids[sq])
+        self.chats_to_update.add(self.squadids[sq])
         self.update()
         return True
 
@@ -424,7 +428,22 @@ class PinOnlineKm:
         except:
             pass
 
+    def unfreeze(self):
+        self.cooldownstate = False
+
     def update(self):
+        self.planUpdate = False
+        if self.cooldownstate:
+            if not self.planUpdate:
+                threading.Timer(0.07, self.update).start()
+                self.planUpdate = True
+            return
+        self.cooldownstate = True
+        list = self.chats_to_update.copy()
+        self.chats_to_update.clear()
+        for chat in list:
+            self.update_chat(chat)
+            time.sleep(1. / 100)
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
         text = self.text()
         for con in self.connections.items():
@@ -438,6 +457,7 @@ class PinOnlineKm:
                 self.bot.editMessageText(chat_id=con[0], message_id=con[1], text=text, parse_mode='HTML')
             except:
                 pass
+        threading.Timer(0.05, self.unfreeze).start()
 
     def close(self):
         for m in self.messages.items():
@@ -511,6 +531,7 @@ class Bot:
         self.squadids = {}
         self.kick = {}
         self.viva_six = {}
+        self.apm = {}
         self.pinns = []  # (squad, pinn, time) or (squad) to unp #TODO написать реализацию
         self.keyboards = {}  # TODO написать админские клавиатуры
         self.keyboards[KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("💽 Моя статистика"),
@@ -571,6 +592,20 @@ class Bot:
         bot.sendMessage(chat_id=message.chat_id, text="Рад тебя видеть",
                         reply_markup=self.keyboards[KeyboardType.DEFAULT])
 
+    def update_apm(self, uid, bot):
+        if uid not in self.apm.keys():
+            self.apm[uid] = set()
+        now = datetime.datetime.now()
+        self.apm[uid].add(now)
+        tmp = self.apm[uid].copy()
+        for t in tmp:
+            if now - t > datetime.timedelta(seconds=70):
+                self.apm[uid].remove(t)
+        if len(self.apm[uid]) > 15:
+            bot.sendMessage(chat_id=self.users[uid].chatid, text="не спами")
+        if len(self.apm[uid]) > 20:
+            bot.sendMessage(chat_id=273060432, text="Игрок @" + self.users[uid].username + " спамит")
+
     def add_admin(self, id):
         conn = sql.connect(self.database)
         if not id in self.admins:
@@ -598,13 +633,10 @@ class Bot:
                 cur.execute("INSERT INTO blacklist(id) VALUES (?)", (id,))
                 self.blacklist.add(id)
 
-    def unbun(self, id):
-        conn = sql.connect(self.database)
+    def unban(self, cur, id):
         if id in self.blacklist:
-            cur = conn.cursor()
             cur.execute("DELETE FROM blacklist WHERE id=?", (id,))
             self.blacklist.remove(id)
-            conn.commit()
             return True
         return False
 
@@ -773,7 +805,7 @@ class Bot:
             bot.sendMessage(chat_id=player.chatid,
                             text="🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n"
                                  "Если ты сменил игровой ник и у тебя лапки обратись к @ant_ant или своему командиру\n"
-                                 "<code>l!</code>", parse_mode='HTML')
+                                 "<code>А иначе не кидай мне чужой профиль!</code>", parse_mode='HTML')
             return False
         ps.time = message.forward_date
         oldps = player.get_stats(4)
@@ -789,7 +821,7 @@ class Bot:
                 hour = m.group('hour')
                 ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
                                           hour=int(hour) % 24)
-                if message.date - ddate < datetime.timedelta(milliseconds=10):
+                if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
                     ddate = ddate - datetime.timedelta(days=1)
                 date = str(ddate).split('.')[0]
             except:
@@ -1202,6 +1234,9 @@ class Bot:
                             break
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
             elif msg:
+                if user.id not in self.admins:
+                    bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ты не одмен, тебе не можно")
+                    return
                 for pl in self.users.values():
                     time.sleep(1. / 30)
                     try:
@@ -1257,6 +1292,21 @@ class Bot:
             self.ban(cur, self.usersbyname[pl])
             bot.sendMessage(chat_id=chat_id, text="Вы его больше не увидите")
             conn.commit()
+        elif text0 == '/unban':
+            m = re.match(r'^[\S]+[\s]+(?P<id>[\d]+)', text)
+            if not m:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неверный формат команды")
+                return
+            if user.id not in self.admins:
+                bot.sendMessage(chat_id=self.users[user.id].chatid,
+                                text="Великая сила - это великая ответственность\nРазве ты настолько ответственен?")
+                return
+            uid = int(m.group('id'))
+            if self.unban(cur, uid):
+                bot.sendMessage(chat_id=chat_id, text="Разбанил")
+                conn.commit()
+            else:
+                bot.sendMessage(chat_id=chat_id, text="Да и не был он в бане")
         elif text0 == "/kick":
             if user.id not in self.admins:
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
@@ -1366,7 +1416,7 @@ class Bot:
             if self.no_permission(user, sq):
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Недостаточно власти\nНужно больше власти")
                 return
-            start = str(datetime.datetime.now() - datetime.timedelta(days=n))
+            start = str(datetime.datetime.now() - datetime.timedelta(hours=6 * n))
             raids = []
             for pl in self.users.values():
                 if pl.squad == sq:
@@ -1378,12 +1428,13 @@ class Bot:
             bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
         elif text0 == '/info':
             _, ids = self.demand_ids(text, user, bot, all=True, allow_empty=True)
-            print(ids)
+            #print(ids)
             if not ids:
                 return
             for uid in ids:
                 pl = self.users[uid]
-                sq = "из отряда <b>{}</b>".format(self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
+                sq = "из отряда <b>{}</b>".format(
+                    self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
                 text = "Это <b>{0}</b> {1}".format(pl.nic, sq)
                 bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True)
         else:
@@ -1634,8 +1685,12 @@ class Bot:
         message = query.message
         chat_id = message.chat_id
         user = query.from_user
+        if user.id not in self.users.keys():
+            bot.answer_callback_query(callback_query_id=query.id, text="Мы еще не знакомы, го в лс")
+            return
+        self.update_apm(user.id, bot)
         if user.id in self.kick.keys() and datetime.datetime.now() - self.kick[user.id] < datetime.timedelta(
-                milliseconds=500):
+                milliseconds=700):
             bot.answer_callback_query(callback_query_id=query.id, text="Wow Wow Wow полегче")
             return
         self.kick[user.id] = datetime.datetime.now()
@@ -1651,6 +1706,7 @@ class Bot:
             print("Sql error occurred:", e.args[0])
         text = data.split()[0]
         name = ""
+
         try:
             name = data.split()[1]
         except:
@@ -1689,9 +1745,9 @@ class Bot:
             conn.commit()
             s = "Текущая статистика сохранена в ячейку №" + str(n)
         elif text == "online":
+            bot.answer_callback_query(callback_query_id=query.id, text="Done")
             if not self.pinonline.add(player, chat_id):
                 self.pinonline.delete(player)
-            bot.answer_callback_query(callback_query_id=query.id, text="Done")
             return
         elif text == "offline":
             self.pinonline.close()
