@@ -1,7 +1,7 @@
 import telegram as telega
 import threading
 import time
-from mybot.ww6StatBotPlayer import Player
+from ww6StatBotPlayer import Player
 
 class PinOnlineKm:
     def __init__(self, squadids: dict, bot: telega.Bot, database):
