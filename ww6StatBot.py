@@ -63,11 +63,12 @@ class Bot:
         self.apm = {}
         self.pinns = []  # (squad, pinn, time) or (squad) to unp #TODO написать реализацию
         self.keyboards = {}  # TODO написать админские клавиатуры
-        self.keyboards[Player.KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("💽 Моя статистика"),
-                                                                            telega.KeyboardButton("🎖 Топы")],
-                                                                           [telega.KeyboardButton("👻 О боте"),
-                                                                            telega.KeyboardButton("👨‍💻 О жизни")]],
-                                                                          resize_keyboard=True)
+        self.keyboards[Player.KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup(
+            [[telega.KeyboardButton("💽 Моя статистика"),
+              telega.KeyboardButton("🎖 Топы")],
+             [telega.KeyboardButton("👻 О боте"),
+              telega.KeyboardButton("👨‍💻 О жизни")]],
+            resize_keyboard=True)
         self.keyboards[Player.KeyboardType.TOP] = telega.ReplyKeyboardMarkup(
             [[telega.KeyboardButton("🏅 Рейтинг"), telega.KeyboardButton("⚔️ Дамагеры"),
               telega.KeyboardButton("❤️ Танки")],
@@ -601,6 +602,15 @@ class Bot:
             res += 'Игроки из этого отряда:\n\t' + '\n\t'.join(average) + '\n\t'
         bot.sendMessage(chat_id=chat_id, text=res, parse_mode='HTML')
 
+    def handle_post(self, bot: telega.Bot, message: telega.Message):
+        chat_from = message.chat
+        if chat_from.username and chat_from.username.lower() == 'greatwar':
+            for squad in self.squadids.values():
+                try:
+                    bot.forward_message(chat_id=squad, from_chat_id=chat_from.id, message_id=message.message_id)
+                except:
+                    pass
+
     def handle_command(self, cur, conn, bot, message):
         text = message.text
         user = message.from_user
@@ -940,7 +950,7 @@ class Bot:
             bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
         elif text0 == '/info':
             _, ids = self.demand_ids(text, user, bot, all=True, allow_empty=True)
-            #print(ids)
+            # print(ids)
             if not ids:
                 return
             for uid in ids:
@@ -956,15 +966,18 @@ class Bot:
     def start(self):
         self.updater.start_polling()
 
-    def handle_massage(self, bot, update):
+    def handle_massage(self, bot, update: telega.Update):
+        if update.channel_post:
+            self.handle_post(bot, update.channel_post)
+            return
         message = update.message
+        text = message.text.strip(" \n\t")
         chat_id = message.chat_id
         user = message.from_user
         # print("!",  message.chat_id, user.username)
         if user.id in self.blacklist and message.chat.type == "private":
             bot.sendMessage(chat_id=chat_id, text="Прости, но тебе здесь не рады")
             return
-        text = message.text.strip(" \n\t")
         conn = None
         cur = None
         try:
