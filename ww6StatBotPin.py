@@ -1,91 +1,142 @@
 import telegram as telega
+import sqlite3 as sql
 import threading
 import time
+from enum import IntEnum
 from mybot.ww6StatBotPlayer import Player
 
+
+def power(player: Player):
+    ps = player.stats[4]
+    return ps.attack + ps.hp + ps.deff + ps.agility + 10
+
+
 class PinOnlineKm:
-    def __init__(self, squadids: dict, bot: telega.Bot, database):
+    class PlayerStatus(IntEnum):
+        SKIPPING = -1
+        GOING = 0
+        ONPLACE = 1
+        UNKNOWN = -2
+
+    def __init__(self, squads: dict, players: dict, bot: telega.Bot, database):
         self.bot = bot
-        self.mes = ""
-        self.squadids = squadids
-        self.squabyid = {v[1]: v[0] for v in self.squadids.items()}
+        self.squads = squads
+        self.players = players
+        self.db = database
         self.users = {}
-        self.oderedkm = ['3', '7', '10', '12', '15', '19', '22', '29', '36']
-        self.kms = {x: set() for x in self.oderedkm}
-        self.kmspw = {x: 0 for x in self.oderedkm}
-        self.power = {sq: 0 for sq in squadids.keys()}
-        self.names = {sq: set() for sq in squadids.keys()}
+        self.ordered_kms = ['3', '7', '10', '12', '15', '19', '22', '29', '36']
+        self.players_online = {}  # dictionary of pairs {'km':km, 'squad':squad, 'state':state)
+        self.players_names = {sq: [[] for km in self.ordered_kms] for sq in self.squads.keys()}  # dictionary of
+        # usernames stored for each squad in the order of ordered_kms
+        self.powers_on_km = {km: 0 for km in self.ordered_kms}
+        self.powers_on_km_confirmed = {km: 0 for km in self.ordered_kms}
+        self.powers_on_squad = {sq: 0 for sq in self.squads.keys()}
         self.messages = {}
         self.connections = {}
         self.copies = {}
-        self.usersbyname = {}
-        self.chatm = {}
-        self.db = database
-        self.cooldownstate = False
-        self.planUpdate = False
+        self.chat_messages = {}
+        self.update_cooldown_state = False
+        self.commit_cooldown_state = False
+        self.update_planed = False
+        self.commit_planed = False
         self.chats_to_update = set()
+        self.users_to_add = {}  # same format as players_online
+        self.users_to_delete = set()
+        self._markup = [[telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[:3]],
+                  [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],
+                  [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[6:]],
+                  [telega.InlineKeyboardButton(text="B пити", callback_data="going_state"),
+                   telega.InlineKeyboardButton(text=" На месте", callback_data="onplace_state"),
+                   telega.InlineKeyboardButton(text="Ой все", callback_data="skipping_state")]]
+        conn = sql.connect(database)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS players_online(id INTEGER UNIQUE ON CONFLICT REPLACE, km TEXT, data TEXT)")
+        conn.commit()
+        self._upload(conn)
 
-    def pin(self, sq, admin_chat, chatmes=""):
-        if not admin_chat in self.connections.keys():
+    def add(self, uid, km, squad, recount=True):
+        if uid in self.users_to_delete:
+            self.users_to_delete.remove(uid)
+        if uid not in self.players.keys() or km not in self.ordered_kms or squad not in self.squads.keys():
+            return
+        self.players_online[uid] = {'km': km, 'squad': squad, 'state': self.PlayerStatus.GOING}
+        self.users_to_add[uid] = self.players_online[uid]
+        if recount:
+            self.recount()
+        self.commit()
+
+    def delete(self, uid, recount=True):
+        if uid in self.users_to_add.keys():
+            del (self.users_to_add[uid])
+        if uid in self.players_online.keys():
+            del (self.players_online[uid])
+        if recount:
+            self.recount()
+        self.commit()
+
+    def commit(self):
+        del_list = self.users_to_delete.copy()
+        add_list = self.users_to_add.copy()
+        self.users_to_delete.clear()
+        self.users_to_add.clear()
+        conn = sql.connect(self.db)
+        cur = conn.cursor()
+        try:
+            for uid in del_list:
+                cur.execute('DELETE FROM players_online WHERE id = ?', (uid,))
+            for uid, pl in add_list.items():
+                cur.execute('INSERT INTO players_online(id, km, data) VALUES(?, ?, ?)',
+                            (uid, pl['km'], '{} {}'.format(pl['squad'], str(pl['state'].value))))
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
+
+    def _upload(self, conn: sql.Connection):
+        cur = conn.cursor()
+        cur.execute('SELECT * from players_online')
+        for row in cur.fetchall():
+            sq, state = row[2].split()
+            self.players_online[row[0]] = {'km': row[1], 'squad': sq, 'state': self.PlayerStatus(int(state))}
+
+    def recount(self):
+        self.powers_on_km = {km: 0 for km in self.ordered_kms}
+        self.powers_on_squad = {sq: 0 for sq in self.squads.keys()}
+        self.players_names = {sq: [[] for km in self.ordered_kms] for sq in self.squads.keys()}
+        for uid in list(self.players_online):
+            if uid not in self.players.keys():
+                self.delete(uid, recount=False)
+                continue
+            pl = self.players_online[uid]
+            km, squad, state = pl['km'], pl['squad'], pl['state']
+            pw = power(self.players[uid])
+            name = self.players[uid].username
+            self.players_names[squad][self.ordered_kms.index(km)].append(name)
+            self.powers_on_km[km] += pw
+            self.powers_on_squad[squad] += pw
+
+    def pin(self, sq, admin: Player, chat_message=""):
+        admin_chat = admin.chatid
+        if admin_chat not in self.connections.keys():
             self.connect(admin_chat)
-        self.update()
-        if sq not in self.squadids.keys():
+            self.update()
+        if sq not in self.squads.keys():
             self.bot.sendMessage(chat_id=admin_chat, text="Не знаю отряда " + sq)
             return
-        self.chatm[sq] = chatmes
-        if self.squadids[sq] in self.messages.keys():
+        self.chat_messages[sq] = chat_message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        if self.squads[sq] in self.messages.keys():
             self.bot.sendMessage(chat_id=admin_chat, text="Пин уже в отряде " + sq)
-            self.chats_to_update.add(self.squadids[sq])
+            self.chats_to_update.add(self.squads[sq])
             self.update()
             return
-        kms = [x for x in self.oderedkm]
-        markup = [[telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in kms[:3]],
-                  [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in kms[3:6]],
-                  [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in kms[6:]]]
-        text = "#пинонлайн\n" + self.mes + "<b>" + self.chatm[sq] + "</b>"
-        chat_id = self.squadids[sq]
-        id = self.bot.sendMessage(chat_id=chat_id, text=text,
-                                  reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode='HTML').message_id
-        self.messages[chat_id] = id
+        text = "#пинонлайн\n<b>{}</b>".format(chat_message[sq])
+        id = self.bot.sendMessage(chat_id=self.squads[sq], text=text,
+                                  reply_markup=telega.InlineKeyboardMarkup(self._markup), parse_mode='HTML').message_id
+        self.messages[self.squads[sq]] = id
         try:
-            self.bot.pinChatMessage(chat_id=chat_id, message_id=id)
+            self.bot.pinChatMessage(chat_id=self.squads[sq], message_id=id)
         except:
             self.bot.sendMessage(chat_id=admin_chat, text=("Не смог запинить в " + sq))
         self.bot.sendMessage(chat_id=admin_chat, text=("Опрос доставлен в " + sq))
         self.update()
-
-    def add(self, player: Player, chat_id, km):
-        if player.id in self.users.keys():
-            if (chat_id != self.users[player.id]) and (player.username not in self.kms[km]):
-                self.delete(player)
-            else:
-                return False
-        self.users[player.id] = (chat_id, km)
-        self.kms[km].add(player.username)
-        self.usersbyname[player.username] = player.id
-        ps = player.stats[4]
-        sq = self.squabyid[chat_id]
-        self.power[sq] += ps.attack + ps.hp + ps.deff + ps.agility + 10
-        self.kmspw[km] += ps.attack + ps.hp + ps.deff + ps.agility + 10
-        self.names[sq].add(player.username)
-        self.chats_to_update.add(chat_id)
-        self.update()
-        return True
-
-    def delete(self, player: Player):
-        if player.id not in self.users.keys():
-            return False
-        sq = self.squabyid[self.users[player.id][0]]
-        km = self.users[player.id][1]
-        ps = player.stats[4]
-        self.power[sq] -= (ps.attack + ps.hp + ps.deff + ps.agility + 10)
-        self.kmspw[km] -= (ps.attack + ps.hp + ps.deff + ps.agility + 10)
-        self.names[sq].discard(player.username)
-        self.kms[km].discard(player.username)
-        del (self.users[player.id])
-        self.chats_to_update.add(self.squadids[sq])
-        self.update()
-        return True
 
     def text(self):
         s = "<b>Пины</b>\n"
@@ -100,7 +151,7 @@ class PinOnlineKm:
                 else:
                     s += "\n"
         s += "<b>Локации</b>\n"
-        for km in self.oderedkm:
+        for km in self.ordered_kms:
             if self.kms[km]:
                 s += " <b>" + km + "км</b> (" + str(len(self.kms[km])) + ") [" + str(
                     self.kmspw[km]) + "] @" + " @".join(self.kms[km]) + "\n"
@@ -124,13 +175,13 @@ class PinOnlineKm:
         sq = self.squabyid[chat_id]
         text = "#пинонлайн\n" + self.mes + "<b>" + self.chatm[sq] + "</b>" + "\n\nонлайн (" + str(
             len(self.names[sq])) + ")\n"
-        for km in self.oderedkm:
+        for km in self.ordered_kms:
             l = [u for u in self.kms[km] if self.users[self.usersbyname[u]][0] == chat_id]
             if l != []:
                 text += "<b>" + km + "км</b> (" + str(len(l)) + "): @" + " @".join(l) + "\n"
             else:
                 text += "<b>" + km + "км</b> (0) ---\n"
-        kms = [x for x in self.oderedkm]
+        kms = [x for x in self.ordered_kms]
         markup = [[telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in kms[:3]],
                   [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in kms[3:6]],
                   [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in kms[6:]]]
@@ -183,3 +234,6 @@ class PinOnlineKm:
                 self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
             except:
                 pass
+        conn = sql.connect(self.db)
+        conn.execute('DROP TABLE players_online')
+        conn.commit()
