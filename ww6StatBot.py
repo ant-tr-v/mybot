@@ -348,16 +348,23 @@ class Bot:
         if oldps is not None:
             player.set_stats(cur, oldps, 3)
             ps.raids = oldps.raids
-        m = re.search(r'(Рейд[\s]+(?P<msg>в[\s]+(?P<hour>[\d]+):[\d]+.*\n.*))', text)
+        m = re.search(r'(Рейд[\s]+(?P<msg>в[\s]+(?P<hour>[\d]+):[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?.*\n.*))', text)
         if m:
             goone = True
             date = message.forward_date
             try:
                 hour = m.group('hour')
-                ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
-                                          hour=int(hour) % 24)
-                if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
-                    ddate = ddate - datetime.timedelta(days=1)
+                day = m.group('day')
+                month = m.group('month')
+                ddate = None
+                if day is None:
+                    ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
+                                              hour=int(hour) % 24)
+                    if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
+                        ddate = ddate - datetime.timedelta(days=1)
+                else:
+                    ddate = datetime.datetime(year=date.year, month=int(month), day=int(day),
+                                              hour=int(hour) % 24)
                 date = str(ddate).split('.')[0]
             except:
                 goone = False
@@ -996,9 +1003,9 @@ class Bot:
         if (message.forward_from is not None) and (message.forward_from.id == 430930191) and (
                 '🗣' in text and '❤️' in text and '🔥' in text and '⚔️' in text) and message.chat.type == "private":
             if user.id not in self.users.keys():
-                #if "Убежище 6" not in text:
-                  #  bot.sendMessage(chat_id=chat_id, text="А ты фракцией не ошибся?")
-                   # return
+                if "Убежище 6" not in text:
+                    bot.sendMessage(chat_id=chat_id, text="А ты фракцией не ошибся?")
+                    return
                 if message.date - message.forward_date > datetime.timedelta(minutes=2):
                     bot.sendMessage(chat_id=chat_id, text="А можно профиль посвежее?")
                     return
