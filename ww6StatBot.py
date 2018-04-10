@@ -11,9 +11,9 @@ import datetime
 import time
 import re
 from enum import Enum
-from mybot.ww6StatBotPin import PinOnlineKm
-from mybot.ww6StatBotUtils import send_split, pin
-from mybot.ww6StatBotPlayer import Player, PlayerStat
+from ww6StatBotPin import PinOnlineKm
+from ww6StatBotUtils import send_split, pin
+from ww6StatBotPlayer import Player, PlayerStat
 
 
 class StatType(Enum):

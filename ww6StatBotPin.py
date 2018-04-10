@@ -3,7 +3,7 @@ import sqlite3 as sql
 import threading
 import time
 from enum import IntEnum
-from mybot.ww6StatBotPlayer import Player
+from ww6StatBotPlayer import Player
 
 
 def power(player: Player):
