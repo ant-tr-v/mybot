@@ -2,6 +2,7 @@ import sqlite3 as sql
 import datetime
 from enum import Enum
 
+
 class PlayerStat:
     def __init__(self, cur, id=None):
         self.time = datetime.datetime.now()
@@ -72,14 +73,76 @@ class PlayerStat:
             ps.time, ps.hp, ps.attack, ps.deff, ps.power, ps.oratory, ps.agility, ps.accuracy, ps.raids
 
 
+class PlayerSettings:
+    """sex and notifications should be maneged manually, after that update should be called"""
+    def __init__(self, cur: sql.Cursor, uid=None):
+        self.uid = uid
+        self.sex = "male"
+        self._notiff_bits = 0
+        self.notif_time = ["23:00", "0:00", "1:05", "5:00", "6:00", "7:05", "11:00", "12:00", "13:05", "17:00", "18:00", "19:05"]
+        self.notifications = {t: False for t in self.notif_time}
+        cur.executescript("CREATE TABLE IF NOT EXISTS user_settings(id INTEGER UNIQUE ON CONFLICT REPLACE, sex TEXT, "
+                    "nbits INT, meta TEXT)")
+        if not uid:
+            return
+        cur.execute("SELECT * FROM user_settings WHERE id=?", (self.uid,))
+        if len(cur.fetchall()) > 0:
+            self.get(cur)
+        else:
+            self.put(cur)
+
+    def put(self, cur):
+        if not self.uid:
+            return
+        try:
+            cur.execute("INSERT INTO user_settings(id, sex, nbits, meta) VALUES(?, ?, ?, ?)",
+                        (self.uid, self.sex, self._notiff_bits, ""))
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
+
+    def get(self, cur):
+        if not self.uid:
+            return
+        try:
+            cur.execute("SELECT * FROM user_settings WHERE id=?", (self.uid,))
+            self.sex, self._notiff_bits = cur.fetchone()[1:-1]
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
+        k = 1
+        i = 0
+        while k < self._notiff_bits:
+            if k & self._notiff_bits:
+                self.notifications[self.notif_time[i]] = True
+            else:
+                self.notifications[self.notif_time[i]] = False
+            k <<= 1
+            i += 1
+
+    def update(self, cur=None):
+        k = 1
+        self._notiff_bits = 0
+        for i in range(len(self.notif_time)):
+            if self.notifications[self.notif_time[i]]:
+                self._notiff_bits |= k
+            k <<= 1
+        if not self.uid or cur is None:
+            return
+        try:
+            cur.execute("UPDATE user_settings SET sex = ?, nbits = ?, meta = ? WHERE id=?",
+                        (self.sex, self._notiff_bits, "", self.uid))
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
+
+
 class Player:
     class KeyboardType(Enum):
         NONE = -1
         DEFAULT = 0
         TOP = 1
         STATS = 2
+        SETTINGS = 3
 
-    def __init__(self, cur, setings=(None, -1, "", "", "", [None, None, None, None, None])):
+    def __init__(self, cur: sql.Cursor, setings=(None, -1, "", "", "", [None, None, None, None, None])):
         self.id, self.chatid, self.username, self.nic, self.squad, sids = setings
         if self.squad is None:
             self.squad = ""
@@ -90,6 +153,7 @@ class Player:
         self.update_text(cur)
         self.stats = [PlayerStat(cur, i) if i is not None else None for i in sids]
         self.keyboard = self.KeyboardType.DEFAULT
+        self.settings = PlayerSettings(cur, self.id)
 
     def get_stats(self, n):
         return self.stats[n]

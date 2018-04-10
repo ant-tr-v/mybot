@@ -13,7 +13,8 @@ import re
 from enum import Enum
 from ww6StatBotPin import PinOnlineKm
 from ww6StatBotUtils import send_split, pin
-from ww6StatBotPlayer import Player, PlayerStat
+from ww6StatBotPlayer import Player, PlayerStat, PlayerSettings
+from ww6StatBotEvents import Notificator
 
 
 class StatType(Enum):
@@ -67,7 +68,8 @@ class Bot:
             [[telega.KeyboardButton("💽 Моя статистика"),
               telega.KeyboardButton("🎖 Топы")],
              [telega.KeyboardButton("👻 О боте"),
-              telega.KeyboardButton("👨‍💻 О жизни")]],
+              telega.KeyboardButton("👨‍💻 О жизни")],
+             [telega.KeyboardButton("🔧 Настройки")]],
             resize_keyboard=True)
         self.keyboards[Player.KeyboardType.TOP] = telega.ReplyKeyboardMarkup(
             [[telega.KeyboardButton("🏅 Рейтинг"), telega.KeyboardButton("⚔️ Дамагеры"),
@@ -78,6 +80,8 @@ class Bot:
         self.keyboards[Player.KeyboardType.STATS] = telega.ReplyKeyboardMarkup(
             [[telega.KeyboardButton("📱 Статистика"), telega.KeyboardButton("🔝 Прирост")],
              [telega.KeyboardButton("📲 Сохранить"), telega.KeyboardButton("🔙 Назад")]], resize_keyboard=True)
+        self.keyboards[Player.KeyboardType.SETTINGS] = telega.ReplyKeyboardMarkup(
+            [[telega.KeyboardButton("👫 Сменить пол"), telega.KeyboardButton("⏰ Напоминания")],[telega.KeyboardButton("🔙 Назад")]], resize_keyboard=True)
         self.state = Player.KeyboardType.DEFAULT
         cur.execute("SELECT * FROM users")
         for r in cur.fetchall():
@@ -104,6 +108,7 @@ class Bot:
         self.updater.dispatcher.add_handler(massage_handler)
         self.updater.dispatcher.add_handler(callback_handler)
         self.updater.start_polling(clean=True)
+        self.notificator = None
 
     def handle_start(self, bot, update):
         message = update.message
@@ -361,7 +366,8 @@ class Bot:
                 ps.raids += 1
                 ps.update_raids(cur, user.id, date)
                 if player.squad in self.squadnames.keys():
-                    text = "<b>" + player.nic + "</b> aka @" + player.username + " отличился на рейде " + m.group('msg')
+                    personal = " отличился на рейде " if player.settings.sex != "female" else " отличилась на рейде "
+                    text = "<b>" + player.nic + "</b> aka @" + player.username + personal + m.group('msg')
                     text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                     try:
                         bot.sendMessage(chat_id=self.squadids[player.squad], text=text, parse_mode='HTML')
@@ -967,6 +973,8 @@ class Bot:
         self.updater.start_polling()
 
     def handle_massage(self, bot, update: telega.Update):
+        if len(self.users) > 0 and self.notificator is None:
+            self.notificator = Notificator(self.users, bot)
         if update.channel_post:
             self.handle_post(bot, update.channel_post)
             return
@@ -988,9 +996,9 @@ class Bot:
         if (message.forward_from is not None) and (message.forward_from.id == 430930191) and (
                 '🗣' in text and '❤️' in text and '🔥' in text and '⚔️' in text) and message.chat.type == "private":
             if user.id not in self.users.keys():
-                if "Убежище 6" not in text:
-                    bot.sendMessage(chat_id=chat_id, text="А ты фракцией не ошибся?")
-                    return
+                #if "Убежище 6" not in text:
+                  #  bot.sendMessage(chat_id=chat_id, text="А ты фракцией не ошибся?")
+                   # return
                 if message.date - message.forward_date > datetime.timedelta(minutes=2):
                     bot.sendMessage(chat_id=chat_id, text="А можно профиль посвежее?")
                     return
@@ -1053,6 +1061,11 @@ class Bot:
                                         text="Здесь ты можешь посмотреть свои статы, сохранить их или посмотреть прирост",
                                         reply_markup=self.keyboards[player.keyboard], parse_mode='HTML')
                         return
+                    elif text == '🔧 Настройки':
+                        player.keyboard = Player.KeyboardType.SETTINGS
+                        bot.sendMessage(chat_id=chat_id, text="Здесь ты можешь изменить личные настройки",
+                                        reply_markup=self.keyboards[player.keyboard], parse_mode='HTML')
+                        return
                 elif player.keyboard == Player.KeyboardType.TOP:
                     s = ""
                     ctext = ""
@@ -1111,8 +1124,46 @@ class Bot:
                                         disable_web_page_preview=True,
                                         reply_markup=telega.InlineKeyboardMarkup([markup]))
                         return
+                elif player.keyboard == Player.KeyboardType.SETTINGS:
+                    msg = ""
+                    if text == "👫 Сменить пол":
+                        if player.settings.sex == "male":
+                            player.settings.sex = "female"
+                            msg = "Пол изменен на <b>женский</b>"
+                        else:
+                            player.settings.sex = "male"
+                            msg = "Пол изменен на <b>мужской</b>"
+                        player.settings.update(cur)
+                        conn.commit()
+                        bot.sendMessage(text= msg, chat_id=chat_id, parse_mode="HTML")
+                        return
+                    elif text =="⏰ Напоминания":
+                        markup = self.notifications_markup(player)
+                        bot.sendMessage(chat_id=chat_id, text="Выбери время напоминаний",
+                                        reply_markup=telega.InlineKeyboardMarkup(markup))
+                        return
                 bot.sendMessage(chat_id=chat_id, text="Это что-то странное🤔\nДумать об этом я конечно не буду 😝",
                                 reply_markup=self.keyboards[player.keyboard])
+
+    def info(self, bot, player: Player):
+        text = "Перед вами стат бот 6 убежища <i>и он крут😎</i>\nОзнакомиться с его командами вы можете по ссылке" \
+               " http://telegra.ph/StatBot-Redizajn-09-30\nНо для вашего же удобства рекомендую пользоваться графическим интерфейсом\n" \
+               "Бот создан во имя блага и процветания 6 убежища игроком @ant_ant\n" \
+               "Так что если найдете в нем серьезные баги - пишите мне)\nЕсли есть желание помочь - можете подкинуть" \
+               " денег (https://qiwi.me/67f1c4c8-705c-4bb3-a8d3-a35717f63858) на поддержку бота или связаться со мной и записаться в группу альфа-тестеров\n" \
+               "\n<i>Играйте, общайтесь, радуйтесь жизни! Вместе мы сильнейшая фракция в игре!</i>\n\n<i>P.S.: Бот продолжает развиваться. Дальше будет лучше</i>"
+        bot.sendMessage(chat_id=player.chatid, text=text, parse_mode='HTML', disable_web_page_preview=True,
+                        reply_markup=self.keyboards[player.keyboard])
+
+    def guide(self, bot, player: Player, chat_id=None):
+        text = "<b>FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3 и\n" \
+               "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n" \
+               "От @vladvertov\n\n<b>Гайд для новичка </b> " \
+               "http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and-co-03-17\n От @Quapiam"
+        if chat_id is None:
+            chat_id = player.chatid
+        bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True,
+                        reply_markup=self.keyboards[player.keyboard])
 
     def top_markup(self, user, ctext, name=""):
         sq = set()
@@ -1137,26 +1188,6 @@ class Bot:
                     [telega.InlineKeyboardButton(text=self.squadnames[q] + t0, callback_data=str(ctext + " " + q))])
         return markup
 
-    def info(self, bot, player: Player):
-        text = "Перед вами стат бот 6 убежища <i>и он крут😎</i>\nОзнакомиться с его командами вы можете по ссылке" \
-               " http://telegra.ph/StatBot-Redizajn-09-30\nНо для вашего же удобства рекомендую пользоваться графическим интерфейсом\n" \
-               "Бот создан во имя блага и процветания 6 убежища игроком @ant_ant\n" \
-               "Так что если найдете в нем серьезные баги - пишите мне)\nЕсли есть желание помочь - можете подкинуть" \
-               " денег (https://qiwi.me/67f1c4c8-705c-4bb3-a8d3-a35717f63858) на поддержку бота или связаться со мной и записаться в группу альфа-тестеров\n" \
-               "\n<i>Играйте, общайтесь, радуйтесь жизни! Вместе мы сильнейшая фракция в игре!</i>\n\n<i>P.S.: Бот продолжает развиваться. Дальше будет лучше</i>"
-        bot.sendMessage(chat_id=player.chatid, text=text, parse_mode='HTML', disable_web_page_preview=True,
-                        reply_markup=self.keyboards[player.keyboard])
-
-    def guide(self, bot, player: Player, chat_id=None):
-        text = "<b>FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3 и\n" \
-               "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n" \
-               "От @vladvertov\n\n<b>Гайд для новичка </b> " \
-               "http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and-co-03-17\n От @Quapiam"
-        if chat_id is None:
-            chat_id = player.chatid
-        bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True,
-                        reply_markup=self.keyboards[player.keyboard])
-
     def statchange_markup(self, n, text, player: Player):
         buttons = ["1", "2", "3", "Прошлый", "Текущий"]
         if text == "change":
@@ -1175,6 +1206,19 @@ class Bot:
             res.append(f)
         if l != []:
             res.append(l)
+        return res
+
+    def notifications_markup(self, player: Player):
+        buttons = ["B {}{}".format(x, " ✅" if player.settings.notifications[x] else "")
+                   for x in player.settings.notif_time]
+        text = "notif"
+        res = []
+        for i in range(0, len(player.settings.notif_time), 3):
+            line = []
+            for j in range(3):
+                if i + j < len(player.settings.notif_time):
+                    line.append(telega.InlineKeyboardButton(text = buttons[i + j], callback_data=text + " " + str(i + j)))
+            res.append(line)
         return res
 
     def my_stat(self, bot, player: Player, n, id=None):
@@ -1281,6 +1325,19 @@ class Bot:
             self.pinkm.close()
             self.pinkm = None
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
+            return
+        elif text == "notif":
+            conn = sql.connect(self.database)
+            cur = conn.cursor()
+            i = int(name)
+            player.settings.notifications[player.settings.notif_time[i]] = not player.settings.notifications[player.settings.notif_time[i]]
+            player.settings.update(cur)
+            conn.commit()
+            bot.answer_callback_query(callback_query_id=query.id, text="Done")
+            markup = self.notifications_markup(player)
+            s = "Выбери время напоминаний"
+            bot.editMessageText(chat_id=message.chat_id, message_id=message.message_id, text=s, parse_mode='HTML',
+                                disable_web_page_preview=True, reply_markup=telega.InlineKeyboardMarkup(markup))
             return
         if s != "":
             markup = []
