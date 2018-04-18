@@ -348,7 +348,7 @@ class Bot:
         if oldps is not None:
             player.set_stats(cur, oldps, 3)
             ps.raids = oldps.raids
-        m = re.search(r'(Рейд[\s]+(?P<msg>в[\s]+(?P<hour>[\d]+)?:[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?.*\n.*))', text)
+        m = re.search(r'(Рейд[\s]+(?P<msg>в[\s]+((?P<hour>[\d]+)|([-]+)):[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?.*\n.*))', text)
         if m:
             goone = True
             date = message.forward_date
@@ -364,7 +364,7 @@ class Bot:
                         h = 19
                         d = -1
                     ddate = datetime.datetime(year=date.year, month=date.month, day=date.day + d, hour=h)
-                if day is None:
+                elif day is None:
                     ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
                                               hour=int(hour) % 24)
                     if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
