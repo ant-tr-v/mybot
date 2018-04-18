@@ -26,15 +26,19 @@ class PinOnlineKm:
         self.users = {}
         self.ordered_kms = ['3', '7', '10', '12', '15', '19', '22', '29', '36']
         self.players_online = {}  # dictionary of pairs {'km':km, 'squad':squad, 'state':state)
-        self.players_names = {sq: [[] for km in self.ordered_kms] for sq in self.squads.keys()}  # dictionary of
-        # usernames stored for each squad in the order of ordered_kms
-        self.powers_on_km = {km: 0 for km in self.ordered_kms}
+        self.players_unconfirmed = {sq: {km: [] for km in self.ordered_kms} for sq in self.squads.keys()}  # dictionary of
+        # ids stored for each squad
+        self.players_confirmed = {sq: {km: [] for km in self.ordered_kms} for sq in self.squads.keys()}
+        self.players_skipping = {sq: {km: [] for km in self.ordered_kms} for sq in self.squads.keys()}
+        self.powers_on_km_unconfirmed = {km: 0 for km in self.ordered_kms}
         self.powers_on_km_confirmed = {km: 0 for km in self.ordered_kms}
-        self.powers_on_squad = {sq: 0 for sq in self.squads.keys()}
+        self.powers_on_squad_unconfirmed = {sq: 0 for sq in self.squads.keys()}
+        self.powers_on_squad_confirmed = {sq: 0 for sq in self.squads.keys()}
+
         self.messages = {}
         self.connections = {}
         self.copies = {}
-        self.chat_messages = {}
+        self.chat_messages = {}L
         self.update_cooldown_state = False
         self.commit_cooldown_state = False
         self.update_planed = False
@@ -45,9 +49,9 @@ class PinOnlineKm:
         self._markup = [[telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[:3]],
                   [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],
                   [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[6:]],
-                  [telega.InlineKeyboardButton(text="B пити", callback_data="going_state"),
-                   telega.InlineKeyboardButton(text=" На месте", callback_data="onplace_state"),
-                   telega.InlineKeyboardButton(text="Ой все", callback_data="skipping_state")]]
+                  [telega.InlineKeyboardButton(text="B пити 🏃", callback_data="going_state"),
+                   telega.InlineKeyboardButton(text=" На месте 👊", callback_data="onplace_state"),
+                   telega.InlineKeyboardButton(text="Ой все 🖕", callback_data="skipping_state")]]
         conn = sql.connect(database)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS players_online(id INTEGER UNIQUE ON CONFLICT REPLACE, km TEXT, data TEXT)")
@@ -109,18 +113,17 @@ class PinOnlineKm:
             km, squad, state = pl['km'], pl['squad'], pl['state']
             pw = power(self.players[uid])
             name = self.players[uid].username
-            self.players_names[squad][self.ordered_kms.index(km)].append(name)
+            self.players_names[squad][km].append(name)
             self.powers_on_km[km] += pw
             self.powers_on_squad[squad] += pw
 
     def pin(self, sq, admin: Player, chat_message=""):
         admin_chat = admin.chatid
-        if admin_chat not in self.connections.keys():
-            self.connect(admin_chat)
-            self.update()
         if sq not in self.squads.keys():
             self.bot.sendMessage(chat_id=admin_chat, text="Не знаю отряда " + sq)
             return
+        if admin_chat not in self.connections.keys():
+            self.connect(admin_chat)
         self.chat_messages[sq] = chat_message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if self.squads[sq] in self.messages.keys():
             self.bot.sendMessage(chat_id=admin_chat, text="Пин уже в отряде " + sq)
@@ -139,10 +142,9 @@ class PinOnlineKm:
         self.update()
 
     def text(self):
-        s = "<b>Пины</b>\n"
-        for m in self.chatm.items():
-            s += " " + m[0] + ": <b>" + m[1] + "</b>\n"
-        s += "<b>Силы на данный момент:</b>\n"
+        s = "<b>Пины</b>\n{}\n<b>Силы на данный момент:</b>\n{}".format(
+            "\n".join(["{}: <b>{}</b>".format(m[0], m[1]) for m in self.chat_messages]),
+            "\n".join(["{}:"]))
         for sq in self.power.keys():
             if self.squadids[sq] in self.messages.keys():
                 s += sq + ": <b>" + str(self.power[sq]) + "</b>🕳 (" + str(len(self.names[sq])) + ") "
