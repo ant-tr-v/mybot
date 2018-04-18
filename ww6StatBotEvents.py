@@ -41,7 +41,6 @@ class Notificator:
                     msg = "Скоро рейд! Ты уже в отметил{} в пине?".format("ась" if female else "ся")
                 else:
                     msg = "Недавно был рейд. Ты обновил{} профиль?".format("а" if female else "")
-                print(msg)
                 try:
                     self.bot.sendMessage(chat_id=pl.chatid, text=msg)
                 except:
