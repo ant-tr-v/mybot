@@ -1269,6 +1269,24 @@ class Bot:
             self.pinkm = None
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
             return
+        elif text == "going_pin":
+            if not self.pinkm:
+                bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
+                return
+            self.pinkm.update_status(PinOnlineKm.PlayerStatus.GOING)
+            bot.answer_callback_query(callback_query_id=query.id, text="Done")
+        elif text == "skipping_pin":
+            if not self.pinkm:
+                bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
+                return
+            self.pinkm.update_status(PinOnlineKm.PlayerStatus.SKIPPING)
+            bot.answer_callback_query(callback_query_id=query.id, text="Done")
+        elif text == "onplace_pin":
+            if not self.pinkm:
+                bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
+                return
+            self.pinkm.update_status(PinOnlineKm.PlayerStatus.ONPLACE)
+            bot.answer_callback_query(callback_query_id=query.id, text="Done")
         if s != "":
             markup = []
             if "top" in text or "players" in text:
