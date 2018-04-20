@@ -52,16 +52,15 @@ class Bot:
         self.blacklist = set(r[0] for r in cur.fetchall())
         cur.execute("SELECT * FROM raids")
         self.raids = set((r[0], r[1]) for r in cur.fetchall())
-        self.pinkm = None
         self.usersbyname = {}
         self.masters = {}
         self.users = {}
         self.squadnames = {}
         self.squadids = {}
+        self.squads_by_id ={}
         self.kick = {}
         self.viva_six = {}
         self.apm = {}
-        self.pinns = []  # (squad, pinn, time) or (squad) to unp #TODO написать реализацию
         self.keyboards = {}  # TODO написать админские клавиатуры
         self.keyboards[Player.KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup([[telega.KeyboardButton("💽 Моя статистика"),
                                                                             telega.KeyboardButton("🎖 Топы")],
@@ -95,6 +94,13 @@ class Bot:
         for r in cur.fetchall():
             self.squadnames[r[1].lower()] = r[0]
             self.squadids[r[1].lower()] = r[2]
+            self.squads_by_id[r[2]] = r[1].lower()
+        cur.close()
+        self.pinkm = PinOnlineKm(self.squadids, self.users, telega.Bot(token=token), database, conn)
+        if not self.pinkm.is_active:
+            self.pinkm.close()
+            self.pinkm = None
+
         self.updater = Updater(token=token)
         massage_handler = MessageHandler(Filters.text | Filters.command, self.handle_massage)
         start_handler = CommandHandler('start', self.handle_start)
@@ -220,6 +226,7 @@ class Bot:
         self.masters[master] = set()
         self.squadnames[short] = r[0]
         self.squadids[short] = r[2]
+        self.squads_by_id[chat_id] = short
         self.add_master(cur, bot, master, id, short)
         bot.sendMessage(chat_id=chat_id,
                         text="Создан отряд " + self.squadnames[short] + " aka " + short)
@@ -870,11 +877,11 @@ class Bot:
                                 text="Что-то не вижу я у тебя админки?\nГде потерял?")
                 return
             if self.pinkm is None:
-                self.pinkm = PinOnlineKm(self.squadids, bot, self.database)
+                self.pinkm = PinOnlineKm(self.squadids, self.users, bot, self.database)
             sqs, msg = self.demand_squads(text, user, bot)
             if sqs:
                 for sq in sqs:
-                    self.pinkm.pin(sq, self.users[user.id].chatid, msg)
+                    self.pinkm.pin(sq, self.users[user.id], msg)
         elif text0 == "/closekm":
             if user.id not in self.admins:
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
@@ -1260,8 +1267,8 @@ class Bot:
             if not self.pinkm:
                 bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
                 return
-            if not self.pinkm.add(player, chat_id, name):
-                self.pinkm.delete(player)
+            if not self.pinkm.add(player.id, name, self.squads_by_id[chat_id]):
+                self.pinkm.delete(player.id, self.squads_by_id[chat_id])
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
             return
         elif text == "offkm":
@@ -1273,19 +1280,19 @@ class Bot:
             if not self.pinkm:
                 bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
                 return
-            self.pinkm.update_status(PinOnlineKm.PlayerStatus.GOING)
+            self.pinkm.change_status(user.id, self.squads_by_id[chat_id], PinOnlineKm.PlayerStatus.GOING)
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
         elif text == "skipping_pin":
             if not self.pinkm:
                 bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
                 return
-            self.pinkm.update_status(PinOnlineKm.PlayerStatus.SKIPPING)
+            self.pinkm.change_status(user.id, self.squads_by_id[chat_id], PinOnlineKm.PlayerStatus.SKIPPING)
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
         elif text == "onplace_pin":
             if not self.pinkm:
                 bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
                 return
-            self.pinkm.update_status(PinOnlineKm.PlayerStatus.ONPLACE)
+            self.pinkm.change_status(user.id, self.squads_by_id[chat_id], PinOnlineKm.PlayerStatus.ONPLACE)
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
         if s != "":
             markup = []
