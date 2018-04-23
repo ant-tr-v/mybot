@@ -188,7 +188,7 @@ class PinOnlineKm:
         self.chat_messages[sq] = chat_message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if self.squads[sq] in self.messages.keys():
             self.bot.sendMessage(chat_id=admin_chat, text="Пин уже в отряде " + sq)
-            self.chats_to_update.add(self.squads[sq])
+            self.chats_to_update.add(sq)
             self.update()
             return
         text = "#пинонлайн\n<b>{}</b>".format(self.chat_messages[sq])
@@ -236,7 +236,7 @@ class PinOnlineKm:
         for sq in list(self.chat_messages.keys()):
             cpl, tpl, cpw, tpw, text = self._players_in_squad(sq)
             s += "{}:<b>{}/{}</b>🕳 ({}/{}) {}\n".format(sq, cpl, tpl, cpw, tpw, text)
-        s += "Локации"
+        s += "<b>Локации:</b>\n"
         for km in self.ordered_kms:
             s += "<b>{}км</b>({}/{}) [{}/{}] {} | {}\n".format(km, len(self.players_on_km_confirmed[km]),
                                                                len(self.players_on_km_confirmed[km]) + len(
@@ -256,7 +256,6 @@ class PinOnlineKm:
         self.copies[chat_id] = id
 
     def connect(self, chat_id):
-        print('conn')
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
         text = self.text()
         id = self.bot.sendMessage(chat_id=chat_id, text=text,
@@ -267,7 +266,9 @@ class PinOnlineKm:
         lines = []
         total = 0
         for km in self.ordered_kms:
+            # print(self.players_confirmed, sq, km)
             c = ["@" + self.players[uid].username + "👊" for uid in list(self.players_confirmed[sq][km])]
+            # print(self.players_unconfirmed[sq][km])
             u = ["@" + self.players[uid].username + "🏃" for uid in list(self.players_unconfirmed[sq][km])]
             if c or u:
                 lines.append("<b>" + km + "км</b>(" + str(len(c) + len(u)) + ")" + " ".join(c) + " ".join(u))
@@ -284,7 +285,6 @@ class PinOnlineKm:
             pass
 
     def update(self):
-        self.update_cooldown_state = True
         cpy = self.chats_to_update.copy()
         self.chats_to_update.clear()
         for sq in cpy:
@@ -303,7 +303,6 @@ class PinOnlineKm:
                 self.bot.editMessageText(chat_id=con[0], message_id=con[1], text=text, parse_mode='HTML')
             except:
                 pass
-        threading.Timer(0.05, self.unfreeze).start()
 
     def close(self):
         self.is_active = False
@@ -312,13 +311,19 @@ class PinOnlineKm:
                 self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
             except:
                 pass
-        self.update()
+        try:
+            self.update()
+        except:
+            pass
         for m in self.connections.items():
             try:
                 self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
             except:
                 pass
-        conn = sql.connect(self.db)
-        conn.execute('DROP TABLE players_online')
-        conn.execute('DROP TABLE pin_json')
-        conn.commit()
+        try:
+            conn = sql.connect(self.db)
+            conn.execute('DROP TABLE players_online')
+            conn.execute('DROP TABLE pin_json')
+            conn.commit()
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])

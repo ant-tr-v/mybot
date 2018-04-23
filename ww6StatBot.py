@@ -58,7 +58,7 @@ class Bot:
         self.users = {}
         self.squadnames = {}
         self.squadids = {}
-        self.squads_by_id ={}
+        self.squads_by_id = {}
         self.kick = {}
         self.viva_six = {}
         self.apm = {}
@@ -80,7 +80,8 @@ class Bot:
             [[telega.KeyboardButton("📱 Статистика"), telega.KeyboardButton("🔝 Прирост")],
              [telega.KeyboardButton("📲 Сохранить"), telega.KeyboardButton("🔙 Назад")]], resize_keyboard=True)
         self.keyboards[Player.KeyboardType.SETTINGS] = telega.ReplyKeyboardMarkup(
-            [[telega.KeyboardButton("👫 Сменить пол"), telega.KeyboardButton("⏰ Напоминания")],[telega.KeyboardButton("🔙 Назад")]], resize_keyboard=True)
+            [[telega.KeyboardButton("👫 Сменить пол"), telega.KeyboardButton("⏰ Напоминания")],
+             [telega.KeyboardButton("🔙 Назад")]], resize_keyboard=True)
         self.state = Player.KeyboardType.DEFAULT
         cur.execute("SELECT * FROM users")
         for r in cur.fetchall():
@@ -355,7 +356,9 @@ class Bot:
         if oldps is not None:
             player.set_stats(cur, oldps, 3)
             ps.raids = oldps.raids
-        m = re.search(r'(Рейд[\s]+(?P<msg>в[\s]+((?P<hour>[\d]+)|([-]+)):[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?.*\n.*))', text)
+        m = re.search(
+            r'(Рейд[\s]+(?P<msg>в[\s]+((?P<hour>[\d]+)|([-]+)):[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?.*\n.*))',
+            text)
         if m:
             goone = True
             date = message.forward_date
@@ -370,7 +373,8 @@ class Bot:
                     if h < 0:
                         h = 19
                         d = -1
-                    ddate = datetime.datetime(year=date.year, month=date.month, day=date.day + d, hour=h)
+                    ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
+                                              hour=h) + datetime.timedelta(days=d)
                 elif day is None:
                     ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
                                               hour=int(hour) % 24)
@@ -959,24 +963,71 @@ class Bot:
         elif text0 == '/whospy':
             self.who_spy(bot, chat_id, user, text)
         elif text0 == '/raidson':
-            m = re.match(r'^[\S]+[\s]+(?P<g>[\S]+)[\s]+(?P<n>[\d]+)', text)
+            m = re.match(r'^[\S]+[\s]+((?P<g>[\S]+)[\s]+)?(?P<n>[\d]+)', text)
             if not m:
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неверный формат команды")
                 return
             sq = m.group('g')
             n = int(m.group('n'))
-            if self.no_permission(user, sq):
+            if sq is None:
+                if user.id not in self.admins:
+                    bot.sendMessage(chat_id=self.users[user.id].chatid, text="Кто ты такой, чтобы просить меня о подобном?")
+                    return
+            elif self.no_permission(user, sq):
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Недостаточно власти\nНужно больше власти")
                 return
             start = str(datetime.datetime.now() - datetime.timedelta(hours=6 * n))
             raids = []
             for pl in self.users.values():
-                if pl.squad == sq:
+                if sq is None or pl.squad == sq:
                     cur.execute(r'SELECT * FROM raids WHERE id = ? AND time > ?', (pl.id, start))
                     raids.append((len(cur.fetchall()), pl.nic, pl.username))
             raids.sort(reverse=True)
-            msg = "Топ рейдеров отряда <b>" + self.squadnames[sq] + "</b>\nНачиная с " + start.split('.')[0] + "\n" + \
-                  "\n".join(['<a href = "t.me/{0}">{1}</a> <b>{2}</b>'.format(x[2], x[1], x[0]) for x in raids])
+            if sq:
+                msg = "Топ рейдеров отряда <b>" + self.squadnames[sq] + "</b>\nНачиная с " + start.split('.')[0] + "\n" + \
+                      "\n".join(['<a href = "t.me/{0}">{1}</a> <b>{2}</b>'.format(x[2], x[1], x[0]) for x in raids])
+            else:
+                msg = "Топ рейдеров\nНачиная с " + start.split('.')[
+                    0] + "\n" + \
+                      "\n".join(['<a href = "t.me/{0}">{1}</a> <b>{2}</b>'.format(x[2], x[1], x[0]) for x in raids])
+            bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
+        elif text0 == '/whoisonraid':
+            m = re.match(r'^[\S]+([\s]+(?P<g>[\S]+))?', text)
+            if not m:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неверный формат команды")
+                return
+            sq = m.group('g')
+            if sq is None:
+                if user.id not in self.admins:
+                    bot.sendMessage(chat_id=self.users[user.id].chatid, text="Кто ты такой, чтобы просить меня о подобном?")
+                    return
+            elif self.no_permission(user, sq):
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Недостаточно власти\nНужно больше власти")
+                return
+            onplace = []
+            going = []
+            skipping = []
+            unknown = []
+            if self.pinkm is None:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Я... это...\nПин не нашел")
+                return
+            for pl in self.users.values():
+                if sq is None or pl.squad == sq:
+                    if pl.id not in self.pinkm.players_online.keys():
+                        unknown.append('@' + pl.username)
+                    else:
+                        st = self.pinkm.players_online[pl.id]['state']
+                        if st == PinOnlineKm.PlayerStatus.SKIPPING:
+                            skipping.append('@' + pl.username)
+                        elif st == PinOnlineKm.PlayerStatus.GOING:
+                            going.append('@' + pl.username)
+                        elif st == PinOnlineKm.PlayerStatus.ONPLACE:
+                            onplace.append('@' + pl.username)
+            msg = "Уже на точке:\n\t{}\nЕщё в пути:\n\t{}\nНе соизволили пойти:\n\t{}\nПропали без вести:\n\t{}".format(
+                "\n\t".join(onplace), "\n\t".join(going), "\n\t".join(skipping), "\n\t".join(unknown)
+            )
+            if sq:
+                msg = "В отряде <b>" + self.squadnames[sq] + "</b>\n" + msg
             bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
         elif text0 == '/info':
             _, ids = self.demand_ids(text, user, bot, all=True, allow_empty=True)
@@ -988,6 +1039,19 @@ class Bot:
                     self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
                 text = "Это <b>{0}</b> {1}".format(pl.nic, sq)
                 bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True)
+        elif text0 == '/when_raid':
+            now = datetime.datetime.now()
+            raid_h = ((int(now.hour) + 5) // 6) * 6 + 1
+            d = 0 if raid_h < 24 else 1
+            raid_h %= 24
+            sec = int((datetime.datetime(year=now.year, month=now.month, day=now.day, hour=raid_h)
+                       + datetime.timedelta(days=d) - datetime.datetime.now()).total_seconds())
+            h = sec // 3600
+            m = (sec % 3600) // 60
+            sec %= 60
+            bot.sendMessage(chat_id=chat_id,
+                            text="Ближайший рейд в <b>{}:00</b> мск\nТ.е. через <b>{}</b> ч <b>{}</b> мин <b>{}</b> сек"
+                            .format(raid_h, h, m, sec), parse_mode="HTML")
         else:
             if message.chat.type == "private":
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неизвестная команда... Сам придумал?")
@@ -1158,9 +1222,9 @@ class Bot:
                             msg = "Пол изменен на <b>мужской</b>"
                         player.settings.update(cur)
                         conn.commit()
-                        bot.sendMessage(text= msg, chat_id=chat_id, parse_mode="HTML")
+                        bot.sendMessage(text=msg, chat_id=chat_id, parse_mode="HTML")
                         return
-                    elif text =="⏰ Напоминания":
+                    elif text == "⏰ Напоминания":
                         markup = self.notifications_markup(player)
                         bot.sendMessage(chat_id=chat_id, text="Выбери время напоминаний",
                                         reply_markup=telega.InlineKeyboardMarkup(markup))
@@ -1240,7 +1304,7 @@ class Bot:
             line = []
             for j in range(3):
                 if i + j < len(player.settings.notif_time):
-                    line.append(telega.InlineKeyboardButton(text = buttons[i + j], callback_data=text + " " + str(i + j)))
+                    line.append(telega.InlineKeyboardButton(text=buttons[i + j], callback_data=text + " " + str(i + j)))
             res.append(line)
         return res
 
@@ -1353,7 +1417,8 @@ class Bot:
             conn = sql.connect(self.database)
             cur = conn.cursor()
             i = int(name)
-            player.settings.notifications[player.settings.notif_time[i]] = not player.settings.notifications[player.settings.notif_time[i]]
+            player.settings.notifications[player.settings.notif_time[i]] = not player.settings.notifications[
+                player.settings.notif_time[i]]
             player.settings.update(cur)
             conn.commit()
             bot.answer_callback_query(callback_query_id=query.id, text="Done")

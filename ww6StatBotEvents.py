@@ -35,7 +35,7 @@ class Notificator:
                 time.sleep(1./50)
                 female = pl.settings.sex == 'female'
                 msg = ""
-                if  i % 3 == 0:
+                if i % 3 == 0:
                     msg = "Скоро рейд! Ты уже выш{}?".format("ла" if female else "ел")
                 elif i % 3 == 1:
                     msg = "Скоро рейд! Ты уже в отметил{} в пине?".format("ась" if female else "ся")
