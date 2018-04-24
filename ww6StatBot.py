@@ -534,7 +534,7 @@ class Bot:
         for sqshort, sqname in self.squadnames.items():
             text += "<b>" + sqname + "</b> aka <i>" + sqshort + "</i>"
             if show_pin:
-                if self.pinkm and sqshort in self.pinkm.chatm.keys():
+                if self.pinkm and sqshort in self.pinkm.chat_messages.keys():
                     text += " \t✅"
                 else:
                     text += " \t❌"

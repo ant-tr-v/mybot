@@ -41,7 +41,7 @@ class PinOnlineKm:
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[:3]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[6:]],
-            [telega.InlineKeyboardButton(text="B пити 🏃", callback_data="going_pin"),
+            [telega.InlineKeyboardButton(text="B пути 🏃", callback_data="going_pin"),
              telega.InlineKeyboardButton(text=" На месте 👊", callback_data="onplace_pin")],
             [telega.InlineKeyboardButton(text="Ой все 🖕", callback_data="skipping_pin")]]
         if conn is None:
@@ -144,7 +144,6 @@ class PinOnlineKm:
         cur = conn.cursor()
         cur.execute('SELECT * from pin_json')
         a, b, c, d = json.loads(cur.fetchone()[0])
-        print(a)
         if not a:
             return False
         self.messages = {int(key): v for key, v in a.items()}
