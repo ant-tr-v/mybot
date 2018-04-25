@@ -41,7 +41,7 @@ class PinOnlineKm:
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[:3]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[6:]],
-            [telega.InlineKeyboardButton(text="B пути 🏃", callback_data="going_pin"),
+            [telega.InlineKeyboardButton(text="B пути 🐌", callback_data="going_pin"),
              telega.InlineKeyboardButton(text=" На месте 👊", callback_data="onplace_pin")],
             [telega.InlineKeyboardButton(text="Ой все 🖕", callback_data="skipping_pin")]]
         if conn is None:
@@ -153,6 +153,7 @@ class PinOnlineKm:
         cur.execute('SELECT * from players_online')
         for row in cur.fetchall():
             sq, state = row[2].split()
+            print(self.players[row[0]].username, state)
             self.players_online[row[0]] = {'km': row[1], 'squad': sq, 'state': self.PlayerStatus(int(state))}
         return True
 
@@ -230,14 +231,15 @@ class PinOnlineKm:
         return cpl, tpl, cpw, tpw, " ".join(ulist)
 
     def text(self):
-        s = "<b>Пины</b>\n{}\n<b>Силы на данный момент:</b>\n".format(
+        s1 = "<b>Пины</b>\n{}\n".format(
             "\n".join(["{}: <b>{}</b>".format(m[0], m[1]) for m in list(self.chat_messages.items())]))
+        s2 = "<b>Силы на данный момент:</b>\n"
         for sq in list(self.chat_messages.keys()):
             cpl, tpl, cpw, tpw, text = self._players_in_squad(sq)
-            s += "{}:<b>{}/{}</b>🕳 ({}/{}) {}\n".format(sq, cpl, tpl, cpw, tpw, text)
-        s += "<b>Локации:</b>\n"
+            s2 += "{}:<b>{}/{}</b>🕳 ({}/{}) {}\n".format(sq, cpl, tpl, cpw, tpw, text)
+        s3 = "<b>Локации:</b>\n"
         for km in self.ordered_kms:
-            s += "<b>{}км</b>({}/{}) [{}/{}] {} | {}\n".format(km, len(self.players_on_km_confirmed[km]),
+            s3 += "<b>{}км</b>({}/{}) [{}/{}] {} | {}\n".format(km, len(self.players_on_km_confirmed[km]),
                                                                len(self.players_on_km_confirmed[km]) + len(
                                                                    self.players_on_km_unconfirmed[km]),
                                                                self.powers_on_km_confirmed[km],
@@ -247,19 +249,24 @@ class PinOnlineKm:
                                                                          self.players_on_km_confirmed[km]]),
                                                                " ".join(['@' + self.players[uid].username for uid in
                                                                          self.players_on_km_unconfirmed[km]]))
-        return s
+        return s1, s2, s3
 
     def copy_to(self, chat_id):
-        text = self.text()
-        id = self.bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML').message_id
-        self.copies[chat_id] = id
+        text = list(self.text())
+        ids = []
+        for msg in text:
+            ids.append(self.bot.sendMessage(chat_id=chat_id, text=msg, parse_mode="HTML").message_id)
+        self.copies[chat_id] = ids
 
     def connect(self, chat_id):
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
-        text = self.text()
-        id = self.bot.sendMessage(chat_id=chat_id, text=text,
-                                  reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode="HTML").message_id
-        self.connections[chat_id] = id
+        text = list(self.text())
+        ids = []
+        for msg in text[:-1]:
+            ids.append(self.bot.sendMessage(chat_id=chat_id, text=msg, parse_mode="HTML").message_id)
+        ids.append(self.bot.sendMessage(chat_id=chat_id, text=text[-1],
+                                        reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode="HTML").message_id)
+        self.connections[chat_id] = ids
 
     def update_squad(self, sq):
         lines = []
@@ -268,7 +275,7 @@ class PinOnlineKm:
             # print(self.players_confirmed, sq, km)
             c = ["@" + self.players[uid].username + "👊" for uid in list(self.players_confirmed[sq][km])]
             # print(self.players_unconfirmed[sq][km])
-            u = ["@" + self.players[uid].username + "🏃" for uid in list(self.players_unconfirmed[sq][km])]
+            u = ["@" + self.players[uid].username + "🐌" for uid in list(self.players_unconfirmed[sq][km])]
             if c or u:
                 lines.append("<b>" + km + "км</b>(" + str(len(c) + len(u)) + ")" + " ".join(c) + " ".join(u))
                 total += len(c) + len(u)
@@ -290,16 +297,19 @@ class PinOnlineKm:
             self.update_squad(sq)
             time.sleep(1. / 100)
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
-        text = self.text()
+        text = list(self.text())
         for con in self.connections.items():
             try:
-                self.bot.editMessageText(chat_id=con[0], message_id=con[1], text=text,
+                for i in range(len(con[1]) - 1):
+                    self.bot.editMessageText(chat_id=con[0], message_id=con[1][i], text=text[i],  parse_mode='HTML')
+                self.bot.editMessageText(chat_id=con[0], message_id=con[1][-1], text=text[-1],
                                          reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode='HTML')
             except:
                 pass
         for con in self.copies.items():
             try:
-                self.bot.editMessageText(chat_id=con[0], message_id=con[1], text=text, parse_mode='HTML')
+                for i in range(len(con[1])):
+                    self.bot.editMessageText(chat_id=con[0], message_id=con[1][i], text=text[i],  parse_mode='HTML')
             except:
                 pass
 
