@@ -13,7 +13,7 @@ import sqlite3 as sql
 import datetime
 import time
 import re
-import configparser
+import yaml
 import logging
 import sys
 from enum import Enum
@@ -34,7 +34,7 @@ class StatType(Enum):
 
 
 class Bot:
-    CONFIG_PATH = 'bot.cfg'
+    CONFIG_PATH = 'bot.yml'
 
     def __init__(self):
         self.configure()
@@ -125,9 +125,10 @@ class Bot:
         self.notificator = None
 
     def configure(self):
-        c = configparser.ConfigParser()
-        if not c.read(self.CONFIG_PATH):
-            raise Exception('missed config file %s. check example at bot.cfg.dist' % self.CONFIG_PATH)
+        f = open(self.CONFIG_PATH)
+        if not f:
+            raise Exception('missed config file %s. check example at bot.yml.dist' % self.CONFIG_PATH)
+        c = yaml.load(f)
 
         mandatory_opts = {
             'db': ['path'],
@@ -136,7 +137,7 @@ class Bot:
         }
 
         for section,opts in mandatory_opts.items():
-            if section not in c.sections():
+            if section not in c:
                 raise Exception('%s: missed mandatory section %s' % (self.CONFIG_PATH,section))
             cfg_opts = c[section]
             for opt in opts:
