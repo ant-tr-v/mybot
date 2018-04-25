@@ -1,5 +1,8 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 __version__ = "0.0.0"
+
 from telegram.ext import Updater
 from telegram.ext import Filters
 from telegram.ext import MessageHandler
@@ -10,6 +13,9 @@ import sqlite3 as sql
 import datetime
 import time
 import re
+import configparser
+import logging
+import sys
 from enum import Enum
 from ww6StatBotPin import PinOnlineKm
 from ww6StatBotUtils import send_split, pin
@@ -28,12 +34,13 @@ class StatType(Enum):
 
 
 class Bot:
-    def __init__(self, database: str, token: str, bot_name: str):
+    CONFIG_PATH = 'bot.cfg'
+
+    def __init__(self):
+        self.configure()
         conn = None
-        self.database = database
-        self.bot_name = bot_name
         try:
-            conn = sql.connect(database)
+            conn = sql.connect(self.db_path)
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
         cur = conn.cursor()
@@ -102,12 +109,12 @@ class Bot:
             self.squadids[r[1].lower()] = r[2]
             self.squads_by_id[r[2]] = r[1].lower()
         cur.close()
-        self.pinkm = PinOnlineKm(self.squadids, self.users, telega.Bot(token=token), database, conn)
+        self.pinkm = PinOnlineKm(self.squadids, self.users, telega.Bot(token=self.tg_token), self.db_path, conn)
         if not self.pinkm.is_active:
             self.pinkm.close()
             self.pinkm = None
 
-        self.updater = Updater(token=token)
+        self.updater = Updater(token=self.tg_token)
         massage_handler = MessageHandler(Filters.text | Filters.command, self.handle_massage)
         start_handler = CommandHandler('start', self.handle_start)
         callback_handler = CallbackQueryHandler(callback=self.handle_callback)
@@ -116,6 +123,26 @@ class Bot:
         self.updater.dispatcher.add_handler(callback_handler)
         self.updater.start_polling(clean=True)
         self.notificator = None
+
+    def configure(self):
+        c = configparser.ConfigParser()
+        if not c.read(self.CONFIG_PATH):
+            raise Exception('missed config file %s. check example at bot.cfg.dist' % self.CONFIG_PATH)
+
+        mandatory_opts = {
+            'db': ['path'],
+            'tg': ['token','bot_name'],
+            'ratelimit': ['report_chat_id']
+        }
+
+        for section,opts in mandatory_opts.items():
+            if section not in c.sections():
+                raise Exception('%s: missed mandatory section %s' % (self.CONFIG_PATH,section))
+            cfg_opts = c[section]
+            for opt in opts:
+                if opt not in cfg_opts:
+                    raise Exception('%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH,opt,section))
+                setattr(self,'_'.join([section,opt]),cfg_opts[opt])
 
     def handle_start(self, bot, update):
         message = update.message
@@ -146,10 +173,10 @@ class Bot:
         if len(self.apm[uid]) > 15:
             bot.sendMessage(chat_id=self.users[uid].chatid, text="не спами")
         if len(self.apm[uid]) > 20:
-            bot.sendMessage(chat_id=273060432, text="Игрок @" + self.users[uid].username + " спамит")
+            bot.sendMessage(chat_id=self.ratelimit_report_chat_id, text="Игрок @" + self.users[uid].username + " спамит")
 
     def add_admin(self, id):
-        conn = sql.connect(self.database)
+        conn = sql.connect(self.db_path)
         if not id in self.admins:
             cur = conn.cursor()
             cur.execute("INSERT INTO admins(id) VALUES (?)", (id,))
@@ -157,7 +184,7 @@ class Bot:
             conn.commit()
 
     def del_admin(self, id):
-        conn = sql.connect(self.database)
+        conn = sql.connect(self.db_path)
         if id in self.admins:
             cur = conn.cursor()
             cur.execute("DELETE FROM admins WHERE id=?", (id,))
@@ -650,7 +677,7 @@ class Bot:
         user = message.from_user
         chat_id = message.chat_id
         text0 = text[:text.find(' ')] if text.find(' ') > 0 else text
-        text0 = text0[:text0.find(self.bot_name)] if text0.find(self.bot_name) > 0 else text0
+        text0 = text0[:text0.find(self.tg_bot_name)] if text0.find(self.tg_bot_name) > 0 else text0
         if text0 == '/me':
             n = 5
             if len(text.split()) > 1 and text.split()[1].isdigit():
@@ -914,7 +941,7 @@ class Bot:
                                 text="Что-то не вижу я у тебя админки?\nГде потерял?")
                 return
             if self.pinkm is None:
-                self.pinkm = PinOnlineKm(self.squadids, self.users, bot, self.database)
+                self.pinkm = PinOnlineKm(self.squadids, self.users, bot, self.db_path)
             sqs, msg = self.demand_squads(text, user, bot)
             if sqs:
                 for sq in sqs:
@@ -1076,7 +1103,7 @@ class Bot:
         conn = None
         cur = None
         try:
-            conn = sql.connect(self.database)
+            conn = sql.connect(self.db_path)
             cur = conn.cursor()
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
@@ -1356,7 +1383,7 @@ class Bot:
         conn = None
         cur = None
         try:
-            conn = sql.connect(self.database)
+            conn = sql.connect(self.db_path)
             cur = conn.cursor()
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
@@ -1414,7 +1441,7 @@ class Bot:
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
             return
         elif text == "notif":
-            conn = sql.connect(self.database)
+            conn = sql.connect(self.db_path)
             cur = conn.cursor()
             i = int(name)
             player.settings.notifications[player.settings.notif_time[i]] = not player.settings.notifications[
@@ -1459,11 +1486,23 @@ class Bot:
         bot.answer_callback_query(callback_query_id=query.id, text="Готово")
 
 
+def set_stderr_debug_logger():
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    ch = logging.StreamHandler(sys.stderr)
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
 if __name__ == "__main__":
-    f = open("bot.txt")
-    db, tk, name = [s.strip() for s in f.readline().split()]
-    bot = Bot(db, tk, name)
+
+    #set_stderr_debug_logger()
+
+    bot = Bot()
     bot.start()
+
     print("admins:", bot.admins)
     print("squadnames:", bot.squadnames.keys())
     print("users", bot.usersbyname.keys())
