@@ -985,12 +985,13 @@ class Bot:
             raids.sort(reverse=True)
             if sq:
                 msg = "Топ рейдеров отряда <b>" + self.squadnames[sq] + "</b>\nНачиная с " + start.split('.')[0] + "\n" + \
-                      "\n".join(['<a href = "t.me/{0}">{1}</a> <b>{2}</b>'.format(x[2], x[1], x[0]) for x in raids])
+                      "\n".join(['{})<a href = "t.me/{}">{}</a> <b>{}</b>'
+                                .format(i, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
             else:
-                msg = "Топ рейдеров\nНачиная с " + start.split('.')[
-                    0] + "\n" + \
-                      "\n".join(['<a href = "t.me/{0}">{1}</a> <b>{2}</b>'.format(x[2], x[1], x[0]) for x in raids])
-            bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
+                msg = "Топ рейдеров\nНачиная с " + start.split('.')[0] + "\n" + \
+                      "\n".join(['{})<a href = "t.me/{}">{}</a> <b>{}</b>'
+                                .format(i, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
+            send_split(bot, msg, chat_id, 100)
         elif text0 == '/whoisonraid':
             m = re.match(r'^[\S]+([\s]+(?P<g>[\S]+))?', text)
             if not m:
@@ -1028,7 +1029,7 @@ class Bot:
             )
             if sq:
                 msg = "В отряде <b>" + self.squadnames[sq] + "</b>\n" + msg
-            bot.sendMessage(chat_id=chat_id, text=msg, parse_mode='HTML', disable_web_page_preview=True)
+            send_split(bot, msg, chat_id, 100)
         elif text0 == '/info':
             _, ids = self.demand_ids(text, user, bot, all=True, allow_empty=True)
             if not ids:

@@ -7,6 +7,7 @@ import json
 from enum import IntEnum
 from ww6StatBotPlayer import Player
 
+
 def power(player: Player):
     ps = player.stats[4]
     return ps.attack + ps.hp + ps.deff + ps.agility + 10
@@ -61,7 +62,7 @@ class PinOnlineKm:
                                     self.squads.keys()}  # dictionary of
         # ids stored for each squad
         self.players_confirmed = {sq: {km: [] for km in self.ordered_kms} for sq in self.squads.keys()}
-        self.players_skipping = {sq:  []  for sq in self.squads.keys()}
+        self.players_skipping = {sq: [] for sq in self.squads.keys()}
         self.players_on_km_confirmed = {km: [] for km in self.ordered_kms}
         self.players_on_km_unconfirmed = {km: [] for km in self.ordered_kms}
         self.powers_on_km_unconfirmed = {km: 0 for km in self.ordered_kms}
@@ -95,6 +96,7 @@ class PinOnlineKm:
             return False
         else:
             self.players_online[uid]['state'] = status
+        self.users_to_add[uid] = self.players_online[uid]
         self.recount()
         self.commit()
         self.chats_to_update.add(squad)
@@ -153,8 +155,8 @@ class PinOnlineKm:
         cur.execute('SELECT * from players_online')
         for row in cur.fetchall():
             sq, state = row[2].split()
-            print(self.players[row[0]].username, state)
             self.players_online[row[0]] = {'km': row[1], 'squad': sq, 'state': self.PlayerStatus(int(state))}
+        self.recount()
         return True
 
     def recount(self):
@@ -240,15 +242,15 @@ class PinOnlineKm:
         s3 = "<b>Локации:</b>\n"
         for km in self.ordered_kms:
             s3 += "<b>{}км</b>({}/{}) [{}/{}] {} | {}\n".format(km, len(self.players_on_km_confirmed[km]),
-                                                               len(self.players_on_km_confirmed[km]) + len(
-                                                                   self.players_on_km_unconfirmed[km]),
-                                                               self.powers_on_km_confirmed[km],
-                                                               self.powers_on_km_confirmed[km] +
-                                                               self.powers_on_km_unconfirmed[km],
-                                                               " ".join(['@' + self.players[uid].username for uid in
-                                                                         self.players_on_km_confirmed[km]]),
-                                                               " ".join(['@' + self.players[uid].username for uid in
-                                                                         self.players_on_km_unconfirmed[km]]))
+                                                                len(self.players_on_km_confirmed[km]) + len(
+                                                                    self.players_on_km_unconfirmed[km]),
+                                                                self.powers_on_km_confirmed[km],
+                                                                self.powers_on_km_confirmed[km] +
+                                                                self.powers_on_km_unconfirmed[km],
+                                                                " ".join(['@' + self.players[uid].username for uid in
+                                                                          self.players_on_km_confirmed[km]]),
+                                                                " ".join(['@' + self.players[uid].username for uid in
+                                                                          self.players_on_km_unconfirmed[km]]))
         return s1, s2, s3
 
     def copy_to(self, chat_id):
@@ -256,7 +258,7 @@ class PinOnlineKm:
         ids = []
         for msg in text:
             ids.append(self.bot.sendMessage(chat_id=chat_id, text=msg, parse_mode="HTML").message_id)
-        self.copies[chat_id] = ids
+        self.copies[chat_id] = ids.copy()
 
     def connect(self, chat_id):
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
@@ -266,15 +268,13 @@ class PinOnlineKm:
             ids.append(self.bot.sendMessage(chat_id=chat_id, text=msg, parse_mode="HTML").message_id)
         ids.append(self.bot.sendMessage(chat_id=chat_id, text=text[-1],
                                         reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode="HTML").message_id)
-        self.connections[chat_id] = ids
+        self.connections[chat_id] = ids.copy()
 
     def update_squad(self, sq):
         lines = []
         total = 0
         for km in self.ordered_kms:
-            # print(self.players_confirmed, sq, km)
             c = ["@" + self.players[uid].username + "👊" for uid in list(self.players_confirmed[sq][km])]
-            # print(self.players_unconfirmed[sq][km])
             u = ["@" + self.players[uid].username + "🐌" for uid in list(self.players_unconfirmed[sq][km])]
             if c or u:
                 lines.append("<b>" + km + "км</b>(" + str(len(c) + len(u)) + ")" + " ".join(c) + " ".join(u))
@@ -282,7 +282,8 @@ class PinOnlineKm:
             else:
                 lines.append("<b>" + km + "км</b> (0) ---")
         if self.players_skipping[sq]:
-            lines.append("Эти п*доры решили не ходить на рейд:" +  " ".join("@" + self.players[uid].username for uid in list(self.players_skipping[sq])))
+            lines.append("Эти п*доры решили не ходить на рейд:" + " ".join(
+                "@" + self.players[uid].username for uid in list(self.players_skipping[sq])))
         text = "#пинонлайн\n<b>{}</b>\n\nонлайн ({})\n{}".format(self.chat_messages[sq], total, "\n".join(lines))
         try:
             self.bot.editMessageText(chat_id=self.squads[sq], message_id=self.messages[self.squads[sq]], text=text,
@@ -298,20 +299,24 @@ class PinOnlineKm:
             time.sleep(1. / 100)
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
         text = list(self.text())
-        for con in self.connections.items():
-            try:
-                for i in range(len(con[1]) - 1):
-                    self.bot.editMessageText(chat_id=con[0], message_id=con[1][i], text=text[i],  parse_mode='HTML')
-                self.bot.editMessageText(chat_id=con[0], message_id=con[1][-1], text=text[-1],
-                                         reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode='HTML')
-            except:
-                pass
-        for con in self.copies.items():
-            try:
-                for i in range(len(con[1])):
-                    self.bot.editMessageText(chat_id=con[0], message_id=con[1][i], text=text[i],  parse_mode='HTML')
-            except:
-                pass
+        for chat_id, msg_ids in self.connections.items():
+            for i in range(len(msg_ids) - 1):
+                try:  # there are too many errors raised by unchanged messages
+                    self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
+                except telega.TelegramError as e:
+                    pass  # print(e.message)
+                try:
+                    self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[-1], text=text[-1],
+                                             reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode='HTML')
+                except telega.TelegramError as e:
+                    pass  # print(e.message)
+
+        for chat_id, msg_ids in self.copies.items():
+            for i in range(len(msg_ids)):
+                try:
+                    self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
+                except telega.TelegramError as e:
+                    pass  # print(e.message)
 
     def close(self):
         self.is_active = False
@@ -326,7 +331,7 @@ class PinOnlineKm:
             pass
         for m in self.connections.items():
             try:
-                self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
+                self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1][-1])
             except:
                 pass
         try:
