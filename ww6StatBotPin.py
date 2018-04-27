@@ -3,6 +3,7 @@ import sqlite3 as sql
 import threading
 import time
 from ww6StatBotPlayer import Player
+from time import time
 import json
 from enum import IntEnum
 from ww6StatBotPlayer import Player
@@ -43,7 +44,7 @@ class PinOnlineKm:
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[6:]],
             [telega.InlineKeyboardButton(text="B пути 🐌", callback_data="going_pin"),
-             telega.InlineKeyboardButton(text=" На месте 👊", callback_data="onplace_pin")],
+             telega.InlineKeyboardButton(text=" На месте ⛺️", callback_data="onplace_pin")],
             [telega.InlineKeyboardButton(text="Ой все 🖕", callback_data="skipping_pin")]]
         if conn is None:
             conn = sql.connect(database)
@@ -123,7 +124,7 @@ class PinOnlineKm:
     def _commit(self):
         if not self.commit_lock.acquire(blocking=False):
             return
-        threading.Timer(5, self._unlock_commit).start()
+        threading.Timer(15, self._unlock_commit).start()
         del_list = self.users_to_delete.copy()
         add_list = self.users_to_add.copy()
         self.users_to_delete.clear()
@@ -274,7 +275,7 @@ class PinOnlineKm:
         lines = []
         total = 0
         for km in self.ordered_kms:
-            c = ["@" + self.players[uid].username + "👊" for uid in list(self.players_confirmed[sq][km])]
+            c = ["@" + self.players[uid].username + "⛺️" for uid in list(self.players_confirmed[sq][km])]
             u = ["@" + self.players[uid].username + "🐌" for uid in list(self.players_unconfirmed[sq][km])]
             if c or u:
                 lines.append("<b>" + km + "км</b>(" + str(len(c) + len(u)) + ")" + " ".join(c) + " ".join(u))
@@ -286,17 +287,16 @@ class PinOnlineKm:
                 "@" + self.players[uid].username for uid in list(self.players_skipping[sq])))
         text = "#пинонлайн\n<b>{}</b>\n\nонлайн ({})\n{}".format(self.chat_messages[sq], total, "\n".join(lines))
         try:
-            self.bot.editMessageText(chat_id=self.squads[sq], message_id=self.messages[self.squads[sq]], text=text,
+            self.bot.editMessageText(timeout=2, chat_id=self.squads[sq], message_id=self.messages[self.squads[sq]], text=text,
                                      reply_markup=telega.InlineKeyboardMarkup(self._markup), parse_mode='HTML')
-        except:
-            pass
+        except telega.TelegramError as e:
+            pass  # print(e.message)
 
     def update(self):
         cpy = self.chats_to_update.copy()
         self.chats_to_update.clear()
         for sq in cpy:
             self.update_squad(sq)
-            time.sleep(1. / 100)
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
         text = list(self.text())
         for chat_id, msg_ids in self.connections.items():
@@ -305,16 +305,15 @@ class PinOnlineKm:
                     self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
                 except telega.TelegramError as e:
                     pass  # print(e.message)
-                try:
-                    self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[-1], text=text[-1],
-                                             reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode='HTML')
-                except telega.TelegramError as e:
-                    pass  # print(e.message)
-
+            try:
+                self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[-1], text=text[-1],
+                                         reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode='HTML')
+            except telega.TelegramError as e:
+                pass  # print(e.message)
         for chat_id, msg_ids in self.copies.items():
             for i in range(len(msg_ids)):
                 try:
-                    self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
+                    self.bot.editMessageText(timeout=2, chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
                 except telega.TelegramError as e:
                     pass  # print(e.message)
 

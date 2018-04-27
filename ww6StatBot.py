@@ -978,7 +978,7 @@ class Bot:
             text = "<b>Неплохой FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3\n"
             bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=False)
         elif text0 == "/dungs":
-            text = "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n"
+            text = "<b>Гайд по подземельям: </b> http://telegra.ph/Gajd-po-podzemelyam-04-26\n"
             bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=False)
         elif text0 == "/rfm":
             text = "<b>Гайд для новичка: </b> http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and" \
@@ -1272,10 +1272,10 @@ class Bot:
                         reply_markup=self.keyboards[player.keyboard])
 
     def guide(self, bot, player: Player, chat_id=None):
-        text = "<b>FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3 и\n" \
-               "<b>Гайд по подземельям: </b> http://telegra.ph/Podzemelya-02-13\n" \
-               "От @vladvertov\n\n<b>Гайд для новичка </b> " \
-               "http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and-co-03-17\n От @Quapiam"
+        text = "<b>FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3\nОт @vladvertov\n\n" \
+               "<b>Гайд по подземельям: </b> http://telegra.ph/Gajd-po-podzemelyam-04-26\n" \
+               "От @Rey_wolf и @ICallThePolice\n\n<b>Гайд для новичка </b> " \
+               "http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and-co-03-17\nОт @Quapiam"
         if chat_id is None:
             chat_id = player.chatid
         bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True,
