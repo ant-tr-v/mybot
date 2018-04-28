@@ -16,10 +16,11 @@ def power(player: Player):
 
 class PinOnlineKm:
     class PlayerStatus(IntEnum):
+        SCARED = -2
         SKIPPING = -1
         GOING = 0
         ONPLACE = 1
-        UNKNOWN = -2
+        UNKNOWN = -100
 
     def __init__(self, squads: dict, players: dict, bot: telega.Bot, database, conn=None):
         self.is_active = True
@@ -44,8 +45,9 @@ class PinOnlineKm:
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[6:]],
             [telega.InlineKeyboardButton(text="B пути 🐌", callback_data="going_pin"),
-             telega.InlineKeyboardButton(text=" На месте ⛺️", callback_data="onplace_pin")],
-            [telega.InlineKeyboardButton(text="Ой все 🖕", callback_data="skipping_pin")]]
+             telega.InlineKeyboardButton(text=" На месте 🏕️", callback_data="onplace_pin")],
+            [telega.InlineKeyboardButton(text="Ой все 🖕", callback_data="skipping_pin")],
+            [telega.InlineKeyboardButton(text="Далеко и опасно 😨", callback_data=" scared_pin")]]
         if conn is None:
             conn = sql.connect(database)
         cur = conn.cursor()
@@ -64,6 +66,7 @@ class PinOnlineKm:
         # ids stored for each squad
         self.players_confirmed = {sq: {km: [] for km in self.ordered_kms} for sq in self.squads.keys()}
         self.players_skipping = {sq: [] for sq in self.squads.keys()}
+        self.players_scared = {sq: [] for sq in self.squads.keys()}
         self.players_on_km_confirmed = {km: [] for km in self.ordered_kms}
         self.players_on_km_unconfirmed = {km: [] for km in self.ordered_kms}
         self.powers_on_km_unconfirmed = {km: 0 for km in self.ordered_kms}
@@ -87,7 +90,7 @@ class PinOnlineKm:
         return True
 
     def change_status(self, uid, squad, status):
-        if status == self.PlayerStatus.SKIPPING:
+        if status == self.PlayerStatus.SKIPPING or status == self.PlayerStatus.SCARED:
             if uid in self.players_online.keys() and self.players_online[uid]['state'] == status:
                 self.delete(uid, self.players_online[uid]['squad'])
                 return True
@@ -179,6 +182,8 @@ class PinOnlineKm:
                 self.players_on_km_confirmed[km].append(uid)
             elif state == self.PlayerStatus.SKIPPING:
                 self.players_skipping[squad].append(uid)
+            elif state == self.PlayerStatus.SCARED:
+                self.players_scared[squad].append(uid)
 
     def pin(self, sq, admin: Player, chat_message=""):
         self.is_active = True
@@ -275,7 +280,7 @@ class PinOnlineKm:
         lines = []
         total = 0
         for km in self.ordered_kms:
-            c = ["@" + self.players[uid].username + "⛺️" for uid in list(self.players_confirmed[sq][km])]
+            c = ["@" + self.players[uid].username + "🏕️" for uid in list(self.players_confirmed[sq][km])]
             u = ["@" + self.players[uid].username + "🐌" for uid in list(self.players_unconfirmed[sq][km])]
             if c or u:
                 lines.append("<b>" + km + "км</b>(" + str(len(c) + len(u)) + ")" + " ".join(c) + " ".join(u))
@@ -283,8 +288,11 @@ class PinOnlineKm:
             else:
                 lines.append("<b>" + km + "км</b> (0) ---")
         if self.players_skipping[sq]:
-            lines.append("Эти п*доры решили не ходить на рейд:" + " ".join(
+            lines.append("\nЭти п*доры решили не ходить на рейд:" + " ".join(
                 "@" + self.players[uid].username for uid in list(self.players_skipping[sq])))
+        if self.players_scared[sq]:
+            lines.append("\nБоятся уходить так далеко от дома:" + " ".join(
+                "@" + self.players[uid].username for uid in list(self.players_scared[sq])))
         text = "#пинонлайн\n<b>{}</b>\n\nонлайн ({})\n{}".format(self.chat_messages[sq], total, "\n".join(lines))
         try:
             self.bot.editMessageText(timeout=2, chat_id=self.squads[sq], message_id=self.messages[self.squads[sq]], text=text,

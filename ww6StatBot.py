@@ -1037,6 +1037,7 @@ class Bot:
             going = []
             skipping = []
             unknown = []
+            scared = []
             if self.pinkm is None:
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Я... это...\nПин не нашел")
                 return
@@ -1052,8 +1053,10 @@ class Bot:
                             going.append('@' + pl.username)
                         elif st == PinOnlineKm.PlayerStatus.ONPLACE:
                             onplace.append('@' + pl.username)
-            msg = "Уже на точке:\n\t{}\nЕщё в пути:\n\t{}\nНе соизволили пойти:\n\t{}\nПропали без вести:\n\t{}".format(
-                "\n\t".join(onplace), "\n\t".join(going), "\n\t".join(skipping), "\n\t".join(unknown)
+                        elif st == PinOnlineKm.PlayerStatus.SCARED:
+                            scared.append('@' + pl.username)
+            msg = "Уже на точке:\n\t{}\nЕщё в пути:\n\t{}\nНе могут ходить так далеко:\n\t{}\nНе соизволили пойти:\n\t{}\nПропали без вести:\n\t{}".format(
+                "\n\t".join(onplace), "\n\t".join(going), "\n\t".join(scared), "\n\t".join(skipping), "\n\t".join(unknown)
             )
             if sq:
                 msg = "В отряде <b>" + self.squadnames[sq] + "</b>\n" + msg
@@ -1467,6 +1470,12 @@ class Bot:
                 bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
                 return
             self.pinkm.change_status(user.id, self.squads_by_id[chat_id], PinOnlineKm.PlayerStatus.SKIPPING)
+            bot.answer_callback_query(callback_query_id=query.id, text="Done")
+        elif text == "scared_pin":
+            if not self.pinkm:
+                bot.answer_callback_query(callback_query_id=query.id, text="Этот пин не активен")
+                return
+            self.pinkm.change_status(user.id, self.squads_by_id[chat_id], PinOnlineKm.PlayerStatus.SCARED)
             bot.answer_callback_query(callback_query_id=query.id, text="Done")
         elif text == "onplace_pin":
             if not self.pinkm:
