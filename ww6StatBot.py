@@ -69,7 +69,7 @@ class Bot:
         self.kick = {}
         self.viva_six = {}
         self.apm = {}
-        self.keyboards = {}  # TODO написать админские клавиатуры
+        self.keyboards = {}
         self.keyboards[Player.KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup(
             [[telega.KeyboardButton("💽 Моя статистика"),
               telega.KeyboardButton("🎖 Топы")],
@@ -132,18 +132,19 @@ class Bot:
 
         mandatory_opts = {
             'db': ['path'],
-            'tg': ['token','bot_name'],
+            'tg': ['token', 'bot_name'],
             'ratelimit': ['report_chat_id']
         }
 
-        for section,opts in mandatory_opts.items():
+        for section, opts in mandatory_opts.items():
             if section not in c:
-                raise Exception('%s: missed mandatory section %s' % (self.CONFIG_PATH,section))
+                raise Exception('%s: missed mandatory section %s' % (self.CONFIG_PATH, section))
             cfg_opts = c[section]
             for opt in opts:
                 if opt not in cfg_opts:
-                    raise Exception('%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH,opt,section))
-                setattr(self,'_'.join([section,opt]),cfg_opts[opt])
+                    raise Exception(
+                        '%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH, opt, section))
+                setattr(self, '_'.join([section, opt]), cfg_opts[opt])
 
     def handle_start(self, bot, update):
         message = update.message
@@ -174,7 +175,8 @@ class Bot:
         if len(self.apm[uid]) > 15:
             bot.sendMessage(chat_id=self.users[uid].chatid, text="не спами")
         if len(self.apm[uid]) > 20:
-            bot.sendMessage(chat_id=self.ratelimit_report_chat_id, text="Игрок @" + self.users[uid].username + " спамит")
+            bot.sendMessage(chat_id=self.ratelimit_report_chat_id,
+                            text="Игрок @" + self.users[uid].username + " спамит")
 
     def add_admin(self, id):
         conn = sql.connect(self.db_path)
@@ -569,6 +571,24 @@ class Bot:
             text += "\n"
         bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True)
 
+    def echo(self, bot: telega.Bot, message, call_back_chat=None, squads=None, status: PinOnlineKm.PlayerStatus = None):
+        """squads should be iterable, no rights are checked"""
+        for pl in self.users.values():
+            if (not squads or pl.squad in squads) and \
+                    (status is None or (self.pinkm and self.pinkm.player_status(pl) == status)):
+                time.sleep(1. / 30)
+                try:
+                    bot.sendMessage(chat_id=pl.chatid, text=message)
+                except telega.TelegramError as e:
+                    if call_back_chat and "bot was blocked by the user" in e.message:
+                        try:
+                            bot.sendMessage(chat_id=call_back_chat,
+                                            text="Игрок @{} заблокировал меня((".format(pl.username))
+                        except:
+                            pass
+                except:
+                    pass
+
     def demand_squads(self, text, user, bot, allow_empty=False):
         if len(text.split()) <= 1:
             bot.sendMessage(chat_id=self.users[user.id].chatid, text="сообщения-то и нехватает")
@@ -587,7 +607,7 @@ class Bot:
                 bot.sendMessage(chat_id=self.users[user.id].chatid,
                                 text="Весело наверное писать в несуществующий отряд")
             return [], text[start:]
-        if user.id not in self.admins and user.id not in self.masters.keys() and not any(sq in self.masters[
+        if user.id not in self.admins and user.id not in self.masters.keys() and not all(sq in self.masters[
             user.id] for sq in sqs):
             bot.sendMessage(chat_id=self.users[user.id].chatid,
                             text="Небеса не одарили тебя столь великой властью\nМожешь рискнуть обратиться за "
@@ -820,32 +840,37 @@ class Bot:
                                     short] + "</b>"),
                                 parse_mode='HTML')
             conn.commit()
-        elif text0 == "/echo":
+        elif re.match("/echo_(?P<type>[\S]+)([\s]|$)|/echo([\s]|$)", text0):
+            type = re.match("/echo_(?P<type>[\S]+)([\s]|$)|/echo([\s]|$)", text0).group('type')
+            if type:
+                type = type.strip()
+            status = None  # TODO consider using dict instead
+            if type is None:
+                pass
+            elif type == 'lost':
+                status = PinOnlineKm.PlayerStatus.UNKNOWN
+            elif type == 'going':
+                status = PinOnlineKm.PlayerStatus.GOING
+            elif type == 'scared':
+                status = PinOnlineKm.PlayerStatus.SCARED
+            elif type == 'skipping':
+                status = PinOnlineKm.PlayerStatus.SKIPPING
+            elif type == 'raiding':
+                status = PinOnlineKm.PlayerStatus.ONPLACE
+            else:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Нет такого /echo")
+                return
             sqs, msg = self.demand_squads(text, user, bot, allow_empty=True)
-            if sqs:
-                for pl in self.users.values():
-                    time.sleep(1. / 30)
-                    for sq in sqs:
-                        if sq is None or sq == pl.squad:
-                            try:
-                                bot.sendMessage(chat_id=pl.chatid, text=msg)
-                            except:
-                                bot.sendMessage(chat_id=self.users[user.id].chatid,
-                                                text="Пользователь @" + pl.username + " отключил бота")
-                            break
-                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
-            elif msg:
-                if user.id not in self.admins:
-                    bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ты не одмен, тебе не можно")
-                    return
-                for pl in self.users.values():
-                    time.sleep(1. / 30)
-                    try:
-                        bot.sendMessage(chat_id=pl.chatid, text=msg)
-                    except:
-                        bot.sendMessage(chat_id=self.users[user.id].chatid,
-                                        text="Пользователь @" + pl.username + " отключил бота")
-                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
+            if sqs is None:
+                return
+            if not sqs and user.id not in self.admins:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ты не одмен, тебе не можно")
+                return
+            if not msg:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="А писать-то и нечего")
+                return
+            self.echo(bot, msg,self.users[user.id].chatid, sqs, status)
+            bot.sendMessage(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
         elif text0 == "/echo-s":
             sqs, msg = self.demand_squads(text, user, bot)
             if sqs:
@@ -999,7 +1024,8 @@ class Bot:
             n = int(m.group('n'))
             if sq is None:
                 if user.id not in self.admins:
-                    bot.sendMessage(chat_id=self.users[user.id].chatid, text="Кто ты такой, чтобы просить меня о подобном?")
+                    bot.sendMessage(chat_id=self.users[user.id].chatid,
+                                    text="Кто ты такой, чтобы просить меня о подобном?")
                     return
             elif self.no_permission(user, sq):
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Недостаточно власти\nНужно больше власти")
@@ -1012,14 +1038,15 @@ class Bot:
                     raids.append((len(cur.fetchall()), pl.nic, pl.username))
             raids.sort(reverse=True)
             if sq:
-                msg = "Топ рейдеров отряда <b>" + self.squadnames[sq] + "</b>\nНачиная с " + start.split('.')[0] + "\n" + \
+                msg = "Топ рейдеров отряда <b>" + self.squadnames[sq] + "</b>\nНачиная с " + start.split('.')[
+                    0] + "\n" + \
                       "\n".join(['{})<a href = "t.me/{}">{}</a> <b>{}</b>'
-                                .format(i, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
+                                .format(i + 1, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
             else:
                 msg = "Топ рейдеров\nНачиная с " + start.split('.')[0] + "\n" + \
                       "\n".join(['{})<a href = "t.me/{}">{}</a> <b>{}</b>'
-                                .format(i, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
-            send_split(bot, msg, chat_id, 100)
+                                .format(i + 1, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
+            send_split(bot, msg, chat_id, 50)
         elif text0 == '/whoisonraid':
             m = re.match(r'^[\S]+([\s]+(?P<g>[\S]+))?', text)
             if not m:
@@ -1028,7 +1055,8 @@ class Bot:
             sq = m.group('g')
             if sq is None:
                 if user.id not in self.admins:
-                    bot.sendMessage(chat_id=self.users[user.id].chatid, text="Кто ты такой, чтобы просить меня о подобном?")
+                    bot.sendMessage(chat_id=self.users[user.id].chatid,
+                                    text="Кто ты такой, чтобы просить меня о подобном?")
                     return
             elif self.no_permission(user, sq):
                 bot.sendMessage(chat_id=self.users[user.id].chatid, text="Недостаточно власти\nНужно больше власти")
@@ -1056,11 +1084,46 @@ class Bot:
                         elif st == PinOnlineKm.PlayerStatus.SCARED:
                             scared.append('@' + pl.username)
             msg = "Уже на точке:\n\t{}\nЕщё в пути:\n\t{}\nНе могут ходить так далеко:\n\t{}\nНе соизволили пойти:\n\t{}\nПропали без вести:\n\t{}".format(
-                "\n\t".join(onplace), "\n\t".join(going), "\n\t".join(scared), "\n\t".join(skipping), "\n\t".join(unknown)
+                "\n\t".join(onplace), "\n\t".join(going), "\n\t".join(scared), "\n\t".join(skipping),
+                "\n\t".join(unknown)
             )
             if sq:
                 msg = "В отряде <b>" + self.squadnames[sq] + "</b>\n" + msg
             send_split(bot, msg, chat_id, 100)
+        elif text0 == '/autoping':
+            m = re.match(r'^[\S]+([\s]+(?P<g>[\S]+))?', text)
+            if not m:
+                bot.sendMessage(chat_id=self.users[user.id].chatid, text="Неверный формат команды")
+                return
+            sq = m.group('g')
+            if sq is None:
+                bot.sendMessage(chat_id=chat_id, text="Нехватает отряда")
+                return
+            if self.no_permission(user,sq):
+                bot.sendMessage(chat_id=chat_id, text="Хмм... чего-то не хватает...\nА!  Точно! Твоих прав")
+                return
+            if self.pinkm is None:
+                bot.sendMessage(chat_id=chat_id, text="Пина нету")
+                return
+            list_to_ping =[]
+            try:
+                bot.sendMessage(chat_id=self.squadids[sq], text="Срочно идем на рейд")
+            except:
+                pass
+            for pl in self.users.values():
+                if pl.squad == sq and self.pinkm.player_status(pl) == PinOnlineKm.PlayerStatus.UNKNOWN:
+                    list_to_ping.append('@' + pl.username)
+                    if len(list_to_ping) == 4:
+                        try:
+                            bot.sendMessage(chat_id=self.squadids[sq], text=" ".join(list_to_ping))
+                        except:
+                            pass
+                        list_to_ping.clear()
+            if list_to_ping:
+                try:
+                    bot.sendMessage(chat_id=self.squadids[sq], text=" ".join(list_to_ping))
+                except:
+                    pass
         elif text0 == '/info':
             _, ids = self.demand_ids(text, user, bot, all=True, allow_empty=True)
             if not ids:
@@ -1507,9 +1570,9 @@ def set_stderr_debug_logger():
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
-if __name__ == "__main__":
 
-    #set_stderr_debug_logger()
+if __name__ == "__main__":
+    # set_stderr_debug_logger()
 
     bot = Bot()
     bot.start()

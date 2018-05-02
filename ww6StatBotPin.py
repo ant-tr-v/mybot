@@ -72,6 +72,11 @@ class PinOnlineKm:
         self.powers_on_km_unconfirmed = {km: 0 for km in self.ordered_kms}
         self.powers_on_km_confirmed = {km: 0 for km in self.ordered_kms}
 
+    def player_status(self, player: Player):
+        if player.id in self.players_online.keys():
+            return self.players_online[player.id]['state']
+        return self.PlayerStatus.UNKNOWN
+
     def add(self, uid, km, squad, recount=True):
         if uid not in self.players.keys() or km not in self.ordered_kms or squad not in self.squads.keys():
             return True
