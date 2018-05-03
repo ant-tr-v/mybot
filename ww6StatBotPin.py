@@ -7,6 +7,7 @@ from time import time
 import json
 from enum import IntEnum
 from ww6StatBotPlayer import Player
+from ww6StatBotUtils import MessageManager, Timer
 
 
 def power(player: Player):
@@ -22,9 +23,10 @@ class PinOnlineKm:
         ONPLACE = 1
         UNKNOWN = -100
 
-    def __init__(self, squads: dict, players: dict, bot: telega.Bot, database, conn=None):
+    def __init__(self, squads: dict, players: dict, message_matager: MessageManager, database, timer:Timer = None,
+                 conn=None):
         self.is_active = True
-        self.bot = bot
+        self.message_manager = message_matager
         self.squads = squads
         self.players = players
         self.db = database
@@ -32,7 +34,6 @@ class PinOnlineKm:
         self.players_online = {}  # dictionary of pairs {'km':km, 'squad':squad, 'state':state)
         self.clear()
         self.messages = {}
-        self.connections = {}
         self.copies = {}
         self.chat_messages = {}
         self.commit_lock = threading.Lock()
@@ -40,6 +41,8 @@ class PinOnlineKm:
         self.chats_to_update = set()
         self.users_to_add = {}  # same format as players_online
         self.users_to_delete = set()
+        self.timer = timer or Timer()
+        self.task_id = self.timer.add(self._commit)
         self._markup = [
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[:3]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],
@@ -56,7 +59,7 @@ class PinOnlineKm:
         cur.execute('CREATE TABLE IF NOT EXISTS  pin_json(json TEXT)')
         cur.execute('SELECT * FROM pin_json')
         if len(cur.fetchall()) == 0:
-            cur.execute('INSERT INTO pin_json(json) values("[{}, {}, {}, {}]")')
+            cur.execute('INSERT INTO pin_json(json) values("[{}, {}, {}]")')
         conn.commit()
         self.is_active = self._upload(conn)
 
@@ -89,7 +92,6 @@ class PinOnlineKm:
         self.users_to_add[uid] = self.players_online[uid]
         if recount:
             self.recount()
-        self.commit()
         self.chats_to_update.add(squad)
         self.update()
         return True
@@ -107,7 +109,6 @@ class PinOnlineKm:
             self.players_online[uid]['state'] = status
         self.users_to_add[uid] = self.players_online[uid]
         self.recount()
-        self.commit()
         self.chats_to_update.add(squad)
         self.update()
         return True
@@ -119,20 +120,10 @@ class PinOnlineKm:
         if recount:
             self.recount()
             self.users_to_delete.add(uid)
-        self.commit()
         self.chats_to_update.add(squad)
         self.update()
 
-    def _unlock_commit(self):
-        self.commit_lock.release()
-
-    def commit(self):
-        threading.Thread(target=self._commit).start()
-
     def _commit(self):
-        if not self.commit_lock.acquire(blocking=False):
-            return
-        threading.Timer(15, self._unlock_commit).start()
         del_list = self.users_to_delete.copy()
         add_list = self.users_to_add.copy()
         self.users_to_delete.clear()
@@ -146,7 +137,7 @@ class PinOnlineKm:
                 cur.execute('INSERT INTO players_online(id, km, data) VALUES(?, ?, ?)',
                             (uid, pl['km'], '{} {}'.format(pl['squad'], str(pl['state'].value))))
             cur.execute('UPDATE pin_json set json = ?',
-                        (json.dumps([self.messages, self.connections, self.copies, self.chat_messages]),))
+                        (json.dumps([self.messages, self.copies, self.chat_messages]),))
             conn.commit()
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
@@ -154,11 +145,10 @@ class PinOnlineKm:
     def _upload(self, conn: sql.Connection):
         cur = conn.cursor()
         cur.execute('SELECT * from pin_json')
-        a, b, c, d = json.loads(cur.fetchone()[0])
+        a, c, d = json.loads(cur.fetchone()[0])
         if not a:
             return False
         self.messages = {int(key): v for key, v in a.items()}
-        self.connections = {int(key): v for key, v in b.items()}
         self.copies = {int(key): v for key, v in c.items()}
         self.chat_messages = {key: v for key, v in d.items()}
         cur.execute('SELECT * from players_online')
@@ -194,25 +184,27 @@ class PinOnlineKm:
         self.is_active = True
         admin_chat = admin.chatid
         if sq not in self.squads.keys():
-            self.bot.sendMessage(chat_id=admin_chat, text="Не знаю отряда " + sq)
+            self.message_manager.send_message(chat_id=admin_chat, text="Не знаю отряда " + sq)
             return
-        if admin_chat not in self.connections.keys():
-            self.connect(admin_chat)
         self.chat_messages[sq] = chat_message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if self.squads[sq] in self.messages.keys():
-            self.bot.sendMessage(chat_id=admin_chat, text="Пин уже в отряде " + sq)
+            self.message_manager.send_message(chat_id=admin_chat, text="Пин уже в отряде " + sq)
             self.chats_to_update.add(sq)
             self.update()
             return
         text = "#пинонлайн\n<b>{}</b>".format(self.chat_messages[sq])
-        id = self.bot.sendMessage(chat_id=self.squads[sq], text=text,
-                                  reply_markup=telega.InlineKeyboardMarkup(self._markup), parse_mode='HTML').message_id
+        id = 0
+        try:
+            id = self.message_manager.bot.send_message(chat_id=self.squads[sq], text=text,
+                                      reply_markup=telega.InlineKeyboardMarkup(self._markup), parse_mode='HTML').message_id
+        except:
+            pass
         self.messages[self.squads[sq]] = id
         try:
-            self.bot.pinChatMessage(chat_id=self.squads[sq], message_id=id)
+            self.message_manager.bot.pinChatMessage(chat_id=self.squads[sq], message_id=id)
         except:
-            self.bot.sendMessage(chat_id=admin_chat, text=("Не смог запинить в " + sq))
-        self.bot.sendMessage(chat_id=admin_chat, text=("Опрос доставлен в " + sq))
+            self.message_manager.send_message(chat_id=admin_chat, text=("Не смог запинить в " + sq))
+        self.message_manager.send_message(chat_id=admin_chat, text=("Опрос доставлен в " + sq))
         self.update()
 
     def _players_in_squad(self, squad):
@@ -268,18 +260,8 @@ class PinOnlineKm:
         text = list(self.text())
         ids = []
         for msg in text:
-            ids.append(self.bot.sendMessage(chat_id=chat_id, text=msg, parse_mode="HTML").message_id)
+            ids.append(self.message_manager.bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML").message_id)
         self.copies[chat_id] = ids.copy()
-
-    def connect(self, chat_id):
-        markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
-        text = list(self.text())
-        ids = []
-        for msg in text[:-1]:
-            ids.append(self.bot.sendMessage(chat_id=chat_id, text=msg, parse_mode="HTML").message_id)
-        ids.append(self.bot.sendMessage(chat_id=chat_id, text=text[-1],
-                                        reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode="HTML").message_id)
-        self.connections[chat_id] = ids.copy()
 
     def update_squad(self, sq):
         lines = []
@@ -293,14 +275,14 @@ class PinOnlineKm:
             else:
                 lines.append("<b>" + km + "км</b> (0) ---")
         if self.players_skipping[sq]:
-            lines.append("\nЭти п*доры решили не ходить на рейд:" + " ".join(
+            lines.append("\nЭти <i>оригиналы</i> решили, что могут не ходить на рейд:" + " ".join(
                 "@" + self.players[uid].username for uid in list(self.players_skipping[sq])))
         if self.players_scared[sq]:
             lines.append("\nБоятся уходить так далеко от дома:" + " ".join(
                 "@" + self.players[uid].username for uid in list(self.players_scared[sq])))
         text = "#пинонлайн\n<b>{}</b>\n\nонлайн ({})\n{}".format(self.chat_messages[sq], total, "\n".join(lines))
         try:
-            self.bot.editMessageText(timeout=2, chat_id=self.squads[sq], message_id=self.messages[self.squads[sq]], text=text,
+            self.message_manager.update_msg(timeout=2, chat_id=self.squads[sq], message_id=self.messages[self.squads[sq]], text=text,
                                      reply_markup=telega.InlineKeyboardMarkup(self._markup), parse_mode='HTML')
         except telega.TelegramError as e:
             pass  # print(e.message)
@@ -312,40 +294,22 @@ class PinOnlineKm:
             self.update_squad(sq)
         markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
         text = list(self.text())
-        for chat_id, msg_ids in self.connections.items():
-            for i in range(len(msg_ids) - 1):
-                try:  # there are too many errors raised by unchanged messages
-                    self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
-                except telega.TelegramError as e:
-                    pass  # print(e.message)
-            try:
-                self.bot.editMessageText(chat_id=chat_id, message_id=msg_ids[-1], text=text[-1],
-                                         reply_markup=telega.InlineKeyboardMarkup(markup), parse_mode='HTML')
-            except telega.TelegramError as e:
-                pass  # print(e.message)
         for chat_id, msg_ids in self.copies.items():
             for i in range(len(msg_ids)):
-                try:
-                    self.bot.editMessageText(timeout=2, chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
-                except telega.TelegramError as e:
-                    pass  # print(e.message)
+                self.message_manager.update_msg(timeout=2, chat_id=chat_id, message_id=msg_ids[i], text=text[i], parse_mode='HTML')
 
     def close(self):
         self.is_active = False
         for m in self.messages.items():
             try:
-                self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
+                self.message_manager.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1])
             except:
                 pass
         try:
             self.update()
         except:
             pass
-        for m in self.connections.items():
-            try:
-                self.bot.editMessageReplyMarkup(chat_id=m[0], message_id=m[1][-1])
-            except:
-                pass
+        self.timer.delete(self.task_id)
         try:
             conn = sql.connect(self.db)
             conn.execute('DROP TABLE players_online')
