@@ -21,6 +21,7 @@ from ww6StatBotPin import PinOnlineKm
 from ww6StatBotUtils import send_split, pin, MessageManager, Timer
 from ww6StatBotPlayer import Player, PlayerStat, PlayerSettings
 from ww6StatBotEvents import Notificator
+import ww6StatBotParser as parser
 
 
 class StatType(Enum):
@@ -115,6 +116,7 @@ class Bot:
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
         self.pinkm = PinOnlineKm(self.squadids, self.users, self.message_manager, self.db_path,
                                  timer=self.timer, conn=conn)
+        self._parser = parser.Parser(self.message_manager)
         if not self.pinkm.is_active:
             self.pinkm.close()
             self.pinkm = None
@@ -337,125 +339,6 @@ class Bot:
         else:
             self.message_manager.send_message(chat_id=chat_id, text=s, parse_mode='HTML')
 
-    def handle_forward(self, cur, bot, message):
-        user = message.from_user
-        player = self.users[user.id]
-        text = message.text.strip(" \n\t")
-        player.username = user.username
-        self.usersbyname[player.username.lower()] = player.id
-        self.usersbyname[user.username] = user.id
-        tlines = text.split("\n")
-        ps = PlayerStat(cur)
-        n = -1
-        nic = ""
-        for i in range(1, len(tlines)):
-            if tlines[i] and tlines[i][0] == '├' and tlines[i - 1][0] == '├':
-                n = i - 2
-                break
-        if n >= 0:
-            nic = tlines[n][1:]
-            ps.hp, hanger, ps.attack, ps.deff = [int("".join([c for c in x if c.isdigit()])) for x in
-                                                 tlines[n + 2][tlines[n + 2].find("/"):].split('|')]
-            ps.power, ps.accuracy = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n + 3].split('|')]
-            ps.oratory, ps.agility = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n + 4].split('|')]
-        else:
-            nl = 2  # МАГИЧЕСКАЯ КОНСТАНТА номер строки с ником игрока [первый возможный]
-            while nl < len(tlines):
-                if "Фракция:" in tlines[nl + 1]:
-                    break
-                nl += 1
-            nic = tlines[nl].strip()
-            for i in range(nl + 1, len(tlines)):
-                m = re.search(r'Здоровье:[\s][\d]+/(?P<val>[\d]+)', tlines[i])
-                if m:
-                    ps.hp = int(m.group('val'))
-                m = re.search(r'Урон:[\s](?P<val>[\d]+)', tlines[i])
-                if m:
-                    ps.attack = int(m.group('val'))
-                m = re.search(r'Броня:[\s](?P<val>[\d]+)', tlines[i])
-                if m:
-                    ps.deff = int(m.group('val'))
-                m = re.search(r'Сила:[\s](?P<val>[\d]+)', tlines[i])
-                if m:
-                    ps.power = int(m.group('val'))
-                m = re.search(r'Меткость:[\s](?P<val>[\d]+)', tlines[i])
-                if m:
-                    ps.accuracy = int(m.group('val'))
-                m = re.search(r'Харизма:[\s](?P<val>[\d]+)', tlines[i])
-                if m:
-                    ps.oratory = int(m.group('val'))
-                m = re.search(r'Ловкость:[\s](?P<val>[\d]+)', tlines[i])
-                if m:
-                    ps.agility = int(m.group('val'))
-        nic = nic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        time = datetime.datetime.now()
-        if player.nic == "" or time - message.forward_date < datetime.timedelta(seconds=15):
-            player.nic = nic
-        elif player.nic != nic:
-            self.message_manager.send_message(chat_id=player.chatid,
-                                              text="🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n"
-                                                   "Если ты сменил игровой ник и у тебя лапки обратись к @ant_ant или своему командиру\n"
-                                                   "<code>А иначе не кидай мне чужой профиль!</code>",
-                                              parse_mode='HTML')
-            return False
-        ps.time = message.forward_date
-        oldps = player.get_stats(4)
-        ps.raids = 0
-        if oldps is not None:
-            player.set_stats(cur, oldps, 3)
-            ps.raids = oldps.raids
-        m = re.search(
-            r'(Рейд[\s]+(?P<msg>в[\s]+((?P<hour>[\d]+)|([-]+)):[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?.*\n.*))',
-            text)
-        if m:
-            goone = True
-            date = message.forward_date
-            try:
-                hour = m.group('hour')
-                day = m.group('day')
-                month = m.group('month')
-                ddate = None
-                if hour is None:
-                    h = (((int(date.hour) % 24) - 1) // 6) * 6 + 1
-                    d = 0
-                    if h < 0:
-                        h = 19
-                        d = -1
-                    ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
-                                              hour=h) + datetime.timedelta(days=d)
-                elif day is None:
-                    ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
-                                              hour=int(hour) % 24)
-                    if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
-                        ddate = ddate - datetime.timedelta(days=1)
-                else:
-                    ddate = datetime.datetime(year=date.year, month=int(month), day=int(day),
-                                              hour=int(hour) % 24)
-                    if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
-                        ddate = datetime.datetime(ddate.year - 1, ddate.month, ddate.day, ddate.hour)
-
-                date = str(ddate).split('.')[0]
-            except:
-                goone = False
-            if goone and ((user.id, date) not in self.raids):
-                self.raids.add((user.id, date))
-                ps.raids += 1
-                ps.update_raids(cur, user.id, date)
-                if player.squad in self.squadnames.keys():
-                    personal = " отличился на рейде " if player.settings.sex != "female" else " отличилась на рейде "
-                    text = "<b>" + player.nic + "</b> aka @" + player.username + personal + m.group('msg')
-                    text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    call = lambda e, ca: self.message_manager.send_message(chat_id=player.chatid,
-                                                                           text="Я не смог отправить сообщение в твой отряд\nЕсли хочешь - отправь его сам:\n\n" + text,
-                                                                           parse_mode='HTML')
-                    self.message_manager.send_message(callback=call, chat_id=self.squadids[player.squad], text=text,
-                                                      parse_mode='HTML')
-                self.message_manager.send_message(chat_id=player.chatid, text="Засчитан успешный рейд",
-                                                  parse_mode='HTML')
-        player.set_stats(cur, ps, 4)
-        player.update_text(cur)
-        self.message_manager.send_message(chat_id=player.chatid, text="Я занес твои результаты")
-        return True
 
     def top(self, bot, id, username, chat_id, text, type: StatType, invisible=False, title="",
             time=datetime.datetime.now(), textmode=False):
@@ -986,7 +869,7 @@ class Bot:
                                                   text="Что-то не вижу я у тебя админки?\nГде потерял?")
                 return
             if self.pinkm is None:
-                self.pinkm = PinOnlineKm(self.squadids, self.users, self.message_manager, self.db_path)
+                self.pinkm = PinOnlineKm(self.squadids, self.users, self.message_manager, self.db_path, timer=self.timer)
             sqs, msg = self.demand_squads(text, user, bot)
             if sqs:
                 for sq in sqs:
@@ -1191,19 +1074,18 @@ class Bot:
             cur = conn.cursor()
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
-        if (message.forward_from is not None) and (message.forward_from.id == 430930191) and (
-                '🗣' in text and '❤️' in text and '🔥' in text and '⚔️' in text) and message.chat.type == "private":
+        parse_result = self._parser.run(message)
+        if parse_result.stats is not None and message.chat.type == "private":
             if user.id not in self.users.keys():
-                if "Убежище 6" not in text:
+                if parse_result.fraction != "⚙️Убежище 6":
                     self.message_manager.send_message(chat_id=chat_id, text="А ты фракцией не ошибся?")
                     return
-                if message.date - message.forward_date > datetime.timedelta(minutes=2):
+                if parse_result.timedelta > datetime.timedelta(minutes=2):
                     self.message_manager.send_message(chat_id=chat_id, text="А можно профиль посвежее?")
                     return
                 self.users[user.id] = Player(cur)
                 self.users[user.id].id = user.id
                 self.users[user.id].chatid = chat_id
-                self.usersbyname[user.username.lower()] = user.id
                 try:
                     cur.execute("INSERT INTO users(id, chatid, username) VALUES(?, ?, ?)",
                                 (user.id, chat_id, user.username))
@@ -1219,9 +1101,52 @@ class Bot:
                 self.users[user.id].keyboard = Player.KeyboardType.DEFAULT
                 self.message_manager.send_message(chat_id=chat_id, text="Я тебя запомнил",
                                                   reply_markup=self.keyboards[Player.KeyboardType.DEFAULT])
-            elif self.handle_forward(cur, bot, message):
+
+            player = self.users[user.id]
+            player.username = parse_result.username
+            self.usersbyname[parse_result.username.lower()] = user.id
+            player.update_text(cur)
+            if player.nic == "" or parse_result.timedelta < datetime.timedelta(seconds=15):
+                player.nic = parse_result.nic
+            elif player.nic != parse_result.nic:
+                self.message_manager.send_message(chat_id=player.chatid,
+                                                  text="🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n"
+                                                       "Если ты сменил игровой ник и у тебя лапки обратись к @ant_ant или своему командиру\n"
+                                                       "<code>А иначе не кидай мне чужой профиль!</code>",
+                                                  parse_mode='HTML')
+                player.update_text(cur)
                 conn.commit()
+                return
+            player.update_text(cur)
+
+            oldps = player.get_stats(4)
+            ps = parse_result.stats
+            ps.raids = 0
+            if oldps is not None:
+                player.set_stats(cur, oldps, 3)
+                ps.raids = oldps.raids
+            date = parse_result.raid_time
+            if date and ((user.id, date) not in self.raids):
+                self.raids.add((user.id, date))
+                ps.raids += 1
+                ps.update_raids(cur, user.id, date)
+                if player.squad in self.squadnames.keys():
+                    personal = " отличился на рейде " if player.settings.sex != "female" else " отличилась на рейде "
+                    text = "<b>" + player.nic + "</b> aka @" + player.username + personal + parse_result.raid_text
+                    text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    call = lambda e, ca: self.message_manager.send_message(chat_id=player.chatid,
+                                                                           text="Я не смог отправить сообщение в твой отряд\nЕсли хочешь - отправь его сам:\n\n" + text,
+                                                                           parse_mode='HTML')
+                    self.message_manager.send_message(callback=call, chat_id=self.squadids[player.squad], text=text,
+                                                      parse_mode='HTML')
+                self.message_manager.send_message(chat_id=player.chatid, text="Засчитан успешный рейд",
+                                                  parse_mode='HTML')
+            player.set_stats(cur, ps, 4)
+            player.update_text(cur)
+            self.message_manager.send_message(chat_id=player.chatid, text="Я занес твои результаты")
+            conn.commit()
             return
+
         if user.id not in self.users.keys():
             if message.chat.type == "private":
                 self.message_manager.send_message(chat_id=chat_id,

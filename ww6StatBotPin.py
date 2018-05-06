@@ -30,7 +30,7 @@ class PinOnlineKm:
         self.squads = squads
         self.players = players
         self.db = database
-        self.ordered_kms = ['3', '7', '10', '12', '15', '19', '22', '29', '36']
+        self.ordered_kms = ['5', '9', '12', '16', '20', '24', '28', '32', '38', '46']
         self.players_online = {}  # dictionary of pairs {'km':km, 'squad':squad, 'state':state)
         self.clear()
         self.messages = {}
@@ -42,7 +42,8 @@ class PinOnlineKm:
         self.users_to_add = {}  # same format as players_online
         self.users_to_delete = set()
         self.timer = timer or Timer()
-        self.task_id = self.timer.add(self._commit)
+        self.task_id = self.timer.add(self._commit, 15)
+        self.timer.start()
         self._markup = [
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[:3]],
             [telega.InlineKeyboardButton(text=k + "км", callback_data="onkm " + k) for k in self.ordered_kms[3:6]],

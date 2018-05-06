@@ -4,7 +4,7 @@ from enum import Enum
 
 
 class PlayerStat:
-    def __init__(self, cur, id=None):
+    def __init__(self, cur=None, id=None):
         self.time = datetime.datetime.now()
         self.hp = 0
         self.attack = 0
@@ -15,16 +15,17 @@ class PlayerStat:
         self.agility = 0
         self.raids = 0
         self.id = id
-        try:
-            cur.execute("CREATE TABLE IF NOT EXISTS userstats"
-                        "(id INTEGER PRIMARY KEY,"
-                        "time TEXT, hp INTEGER, attack  INTEGER, deff INTEGER, power INTEGER, accuracy INTEGER, "
-                        "oratory INTEGER, agility INTEGER, raids INTEGER)")
+        if cur:
+            try:
+                cur.execute("CREATE TABLE IF NOT EXISTS userstats"
+                            "(id INTEGER PRIMARY KEY,"
+                            "time TEXT, hp INTEGER, attack  INTEGER, deff INTEGER, power INTEGER, accuracy INTEGER, "
+                            "oratory INTEGER, agility INTEGER, raids INTEGER)")
 
-            if self.id:
-                self.get(cur)
-        except sql.Error as e:
-            print("Sql error occurred:", e.args[0])
+                if self.id:
+                    self.get(cur)
+            except sql.Error as e:
+                print("Sql error occurred:", e.args[0])
 
     def put(self, cur):
         try:
