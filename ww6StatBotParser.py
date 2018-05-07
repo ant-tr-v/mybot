@@ -3,7 +3,7 @@ import re
 import datetime
 
 from ww6StatBotUtils import MessageManager
-from ww6StatBotPlayer import PlayerStat, Player
+from ww6StatBotPlayer import PlayerStat
 
 
 class ParseResult:
@@ -18,7 +18,10 @@ class ParseResult:
 
     def __str__(self):
         return "stats: {}\nfrac: {}\nnic: {}, username: {}\nraid_text: {}\n".format('+' if self.stats else "-",
-                        self.fraction or "-", self.nic or '-', self.username or '-', self.raid_text or '-')
+                                                                                    self.fraction or "-",
+                                                                                    self.nic or '-',
+                                                                                    self.username or '-',
+                                                                                    self.raid_text or '-')
 
 
 class Parser:
@@ -30,7 +33,7 @@ class Parser:
 
     @staticmethod
     def _parse_forward(message: telega.Message, pr: ParseResult):
-        #TODO rewrite using re
+        # TODO rewrite using re
         text = message.text.strip(" \n\t")
         tlines = text.split("\n")
         ps = None

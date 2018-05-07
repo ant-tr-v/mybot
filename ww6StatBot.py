@@ -1036,7 +1036,7 @@ class Bot:
                                                   disable_web_page_preview=True)
         elif text0 == '/when_raid':
             now = datetime.datetime.now()
-            raid_h = ((int(now.hour) + 5) // 6) * 6 + 1
+            raid_h = ((int(now.hour) + 7) // 8) * 8 + 1
             d = 0 if raid_h < 24 else 1
             raid_h %= 24
             sec = int((datetime.datetime(year=now.year, month=now.month, day=now.day, hour=raid_h)
@@ -1089,10 +1089,6 @@ class Bot:
                 try:
                     cur.execute("INSERT INTO users(id, chatid, username) VALUES(?, ?, ?)",
                                 (user.id, chat_id, user.username))
-                    if not self.handle_forward(cur, bot, message):
-                        del (self.users[user.id])
-                        del (self.usersbyname[user.username])
-                        return
                 except:
                     del (self.users[user.id])
                     del (self.usersbyname[user.username])

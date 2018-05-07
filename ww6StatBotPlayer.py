@@ -4,7 +4,7 @@ from enum import Enum
 
 
 class PlayerStat:
-    def __init__(self, cur=None, id=None):
+    def __init__(self, cur=None, stat_id=None):
         self.time = datetime.datetime.now()
         self.hp = 0
         self.attack = 0
@@ -14,7 +14,7 @@ class PlayerStat:
         self.oratory = 0
         self.agility = 0
         self.raids = 0
-        self.id = id
+        self.id = stat_id
         if cur:
             try:
                 cur.execute("CREATE TABLE IF NOT EXISTS userstats"
@@ -57,11 +57,11 @@ class PlayerStat:
             print("Sql error occurred:", e.args[0])
             return -1
 
-    def update_raids(self, cur, id=None, time=None):
+    def update_raids(self, cur, raid_id=None, time=None):
         try:
             cur.execute("""UPDATE userstats SET raids = ?  WHERE id=?""", (self.raids, self.id))
             if time is not None:
-                cur.execute("INSERT INTO raids(id, time) VALUES(?, ?)", (id, time))
+                cur.execute("INSERT INTO raids(id, time) VALUES(?, ?)", (raid_id, time))
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
             return -1
@@ -76,14 +76,15 @@ class PlayerStat:
 
 class PlayerSettings:
     """sex and notifications should be maneged manually, after that update should be called"""
+
     def __init__(self, cur: sql.Cursor, uid=None):
         self.uid = uid
         self.sex = "male"
         self._notiff_bits = 0
-        self.notif_time = ["23:00", "0:00", "1:05", "5:00", "6:00", "7:05", "11:00", "12:00", "13:05", "17:00", "18:00", "19:05"]
+        self.notif_time = ["23:00", "0:00", "1:05", "7:00", "8:00", "9:05", "15:00", "16:00", "17:05"]
         self.notifications = {t: False for t in self.notif_time}
-        cur.executescript("CREATE TABLE IF NOT EXISTS user_settings(id INTEGER UNIQUE ON CONFLICT REPLACE, sex TEXT, "
-                    "nbits INT, meta TEXT)")
+        cur.executescript('CREATE TABLE IF NOT EXISTS user_settings(id INTEGER UNIQUE ON CONFLICT REPLACE, sex TEXT, '
+                          'nbits INT, meta TEXT)')
         if not uid:
             return
         cur.execute("SELECT * FROM user_settings WHERE id=?", (self.uid,))
@@ -110,14 +111,12 @@ class PlayerSettings:
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
         k = 1
-        i = 0
-        while k < self._notiff_bits:
+        for i in range(len(self.notif_time)):
             if k & self._notiff_bits:
                 self.notifications[self.notif_time[i]] = True
             else:
                 self.notifications[self.notif_time[i]] = False
             k <<= 1
-            i += 1
 
     def update(self, cur=None):
         k = 1
