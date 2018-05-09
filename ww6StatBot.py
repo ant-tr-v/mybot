@@ -1412,7 +1412,7 @@ class Bot:
     def handle_new_members(self, bot, update: telega.Update):
         users = update.message.new_chat_members
         chat_id = update.message.chat_id
-        if self.squads_by_id.get(chat_id) in ('v6', 'ld', 'a6'):
+        if self.squads_by_id.get(chat_id) not in ('v6', 'ld', 'a6'):
             return
         time.sleep(2)
         for user in users:
