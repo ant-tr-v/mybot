@@ -128,8 +128,10 @@ class Bot:
         massage_handler = MessageHandler(Filters.text | Filters.command, self.handle_massage)
         start_handler = CommandHandler('start', self.handle_start)
         callback_handler = CallbackQueryHandler(callback=self.handle_callback)
+        join_handler = MessageHandler(Filters.status_update.new_chat_members, self.handle_new_members)
         self.updater.dispatcher.add_handler(start_handler)
         self.updater.dispatcher.add_handler(massage_handler)
+        self.updater.dispatcher.add_handler(join_handler)
         self.updater.dispatcher.add_handler(callback_handler)
         self.updater.start_polling(clean=True)
 
@@ -1406,6 +1408,19 @@ class Bot:
         else:
             self.message_manager.update_msg(chat_id=player.chatid, message_id=id, text=s, parse_mode='HTML',
                                             disable_web_page_preview=True, reply_markup=markup)
+
+    def handle_new_members(self, bot, update: telega.Update):
+        users = update.message.new_chat_members
+        chat_id = update.message.chat_id
+        if self.squads_by_id.get(chat_id) in ('v6', 'ld', 'a6'):
+            return
+        time.sleep(2)
+        for user in users:
+            text = "Рад тебя видеть, <b>{}</b>".format(self.users[user.id].nic) if user.id in self.users.keys() else \
+                "Привет, @{}! Давай знакомиться! Я бот-статистик этого убежища.\nГо в личку)".format(user.username)
+            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+
+
 
     def handle_callback(self, bot: telega.Bot, update: telega.Update):
         query = update.callback_query
