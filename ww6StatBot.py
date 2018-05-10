@@ -443,17 +443,19 @@ class Bot:
         if not m:
             self.message_manager.send_message(chat_id=chat_id, text="Неверный формат\nПопробуй еще раз)")
             return
-        name = m.group('name')
+        name = m.group('name').strip().lower()
         res = []
+        l = len(name)
         for pl in self.users.values():
-            if pl.nic.lower() == name.lower():
-                res.append(pl.username)
+            if (name in pl.nic.lower()) and (len(pl.nic) < 2 * l):
+                res.append((len(pl.nic), pl.nic, pl.username))
         if not res:
             self.message_manager.send_message(chat_id=chat_id, text="Я таких не знаю\n¯\_(ツ)_/¯")
             return
-        res = ['@' + u for u in res]
-        self.message_manager.send_message(chat_id=chat_id, text=("Похоже что ник <b>{0}</b> принадлежит\n{1}".format(
-            name, ' или '.join(res))), parse_mode='HTML')
+        res.sort()
+        res = ['@{} - {}'.format(u[2], u[1]) for u in res]
+        self.message_manager.send_message(chat_id=chat_id, text=("Игроки с похожим ником:\n{1}".format(
+            name, '\n'.join(res))), parse_mode='HTML')
 
     def list_squads(self, bot, chat_id, show_pin=False):
         text = ""
@@ -885,7 +887,8 @@ class Bot:
                                                               until_date=datetime.datetime.now() + datetime.timedelta(
                                                                   seconds=40))
                 except:
-                    self.message_manager.send_message(chat_id=chat_id, text="Выкинуть @" + pl.username + " из чата не получилось")
+                    self.message_manager.send_message(chat_id=chat_id,
+                                                      text="Выкинуть @" + pl.username + " из чата не получилось")
             conn.commit()
         elif text0 == "/pinonkm":
             if user.id not in self.admins:
@@ -937,7 +940,8 @@ class Bot:
         elif text0 == "/rfm":
 
             text = "<b>Гайд для новичка: </b> {}\n ".format("telegra.ph/FAQ-po-igre-Wasteland-Wars-04-06-2"
-                                                            if self.squads_by_id.get(chat_id) in ('ls', 'ld', 'la', 'vd') else
+                                                            if self.squads_by_id.get(chat_id) in (
+            'ls', 'ld', 'la', 'vd') else
                                                             "telegra.ph/FAQ-po-igre-Wasteland-Wars-04-16")
 
             self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
@@ -1042,7 +1046,7 @@ class Bot:
                 self.message_manager.send_message(chat_id=chat_id, text="Пина нету")
                 return
             list_to_ping = []
-            self.message_manager.send_message(chat_id=self.squadids[sq], text="Срочно идем на рейд")
+            self.message_manager.send_message(chat_id=self.squadids[sq], text="Пин видели? А он вас нет...")
             for pl in self.users.values():
                 if pl.squad == sq and self.pinkm.player_status(pl) == PinOnlineKm.PlayerStatus.UNKNOWN:
                     list_to_ping.append('@' + pl.username)
@@ -1419,8 +1423,6 @@ class Bot:
             text = "Рад тебя видеть, <b>{}</b>".format(self.users[user.id].nic) if user.id in self.users.keys() else \
                 "Привет, @{}! Давай знакомиться! Я бот-статистик этого убежища.\nГо в личку)".format(user.username)
             self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
-
-
 
     def handle_callback(self, bot: telega.Bot, update: telega.Update):
         query = update.callback_query
