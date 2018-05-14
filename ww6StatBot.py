@@ -641,6 +641,29 @@ class Bot:
                                                            + self.users[uid].username + " тебе не доступна")
                     return
                 self.stat(bot, uid, chat_id, 5)
+        elif text0 == '/table':
+                _, ids = self.demand_ids(message, user=user, all=True, offset=2)
+                N = 5
+                if ids:
+                    N = int(text.split()[1])
+                else:
+                    return
+                if any(self.no_permission(user, self.users[uid].squad) for uid in ids):
+                    self.message_manager.send_message(chat_id=chat_id,
+                                                      text="Статы кого-то из них тебе не доступны\nТочно знаю")
+                    return
+                text = "юзерка; ник; хп; урон; бронь; сила; меткость; харизма; ловкость; рейды\n"
+                lines = []
+                for uid in ids:
+                    pl = self.users[uid]
+                    st0 = pl.stats[N - 1]
+                    st1 =pl.stats[4]
+                    lines.append("{};{};{};{};{};{};{};{};{};{}"
+                                 .format(pl.username, pl.nic, st1.hp - st0.hp, st1.attack - st0.attack,
+                                         st1.deff - st0.deff, st1.power - st0.power, st1.accuracy - st0.accuracy,
+                                         st1.oratory - st0.oratory, st1.agility - st0.agility, st1.raids - st0.raids))
+                text += "\n".join(lines)
+                self.message_manager.send_message(chat_id=chat_id, text=text)
         elif text0 == '/look_up':
             _, ids = self.demand_ids(message, user=user, all=True, offset=2)
             N = 5
@@ -1423,6 +1446,9 @@ class Bot:
             text = "Рад тебя видеть, <b>{}</b>".format(self.users[user.id].nic) if user.id in self.users.keys() else \
                 "Привет, @{}! Давай знакомиться! Я бот-статистик этого убежища.\nГо в личку)".format(user.username)
             self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+            if self.squads_by_id.get(chat_id) == 'v6' and user.id not in self.users.keys():
+                self.message_manager.send_message(chat_id=-1001289414206, text="@{} замечен на просторах общего чата"
+                                                  .format(user.username))
 
     def handle_callback(self, bot: telega.Bot, update: telega.Update):
         query = update.callback_query
