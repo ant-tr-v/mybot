@@ -17,11 +17,9 @@ class ParseResult:
         self.timedelta = None
 
     def __str__(self):
-        return "stats: {}\nfrac: {}\nnic: {}, username: {}\nraid_text: {}\n".format('+' if self.stats else "-",
-                                                                                    self.fraction or "-",
-                                                                                    self.nic or '-',
-                                                                                    self.username or '-',
-                                                                                    self.raid_text or '-')
+        return "stats: {}\nfrac: {}\nnic: {}, username: {}\nraid_text: {}\n"\
+            .format('+' if self.stats else "-", self.fraction or "-", self.nic or '-',
+                    self.username or '-', self.raid_text or '-')
 
 
 class Parser:
@@ -53,6 +51,8 @@ class Parser:
                                                      tlines[n + 2][tlines[n + 2].find("/"):].split('|')]
                 ps.power, ps.accuracy = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n + 3].split('|')]
                 ps.oratory, ps.agility = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n + 4].split('|')]
+                m = re.search(r"[\d]+/(?P<stamina>[\d]+)", tlines[n + 5])
+                ps.stamina = int(m.group('stamina')) if m else 5
             else:
                 nl = 2  # МАГИЧЕСКАЯ КОНСТАНТА номер строки с ником игрока [первый возможный]
                 while nl < len(tlines):
@@ -84,6 +84,9 @@ class Parser:
                     m = re.search(r'Ловкость:[\s](?P<val>[\d]+)', tlines[i])
                     if m:
                         ps.agility = int(m.group('val'))
+                    m = re.search(r'Выносливость:[\s][\d]+/(?P<val>[\d]+)', tlines[i])
+                    if m:
+                        ps.stamina = int(m.group('val'))
             ps.time = message.forward_date
             nic = nic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         except:

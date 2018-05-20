@@ -14,13 +14,14 @@ class PlayerStat:
         self.oratory = 0
         self.agility = 0
         self.raids = 0
+        self.stamina = 5
         self.id = stat_id
         if cur:
             try:
                 cur.execute("CREATE TABLE IF NOT EXISTS userstats"
                             "(id INTEGER PRIMARY KEY,"
                             "time TEXT, hp INTEGER, attack  INTEGER, deff INTEGER, power INTEGER, accuracy INTEGER, "
-                            "oratory INTEGER, agility INTEGER, raids INTEGER)")
+                            "oratory INTEGER, agility INTEGER, raids INTEGER, stamina INTEGER)")
 
                 if self.id:
                     self.get(cur)
@@ -29,10 +30,11 @@ class PlayerStat:
 
     def put(self, cur):
         try:
-            cur.execute("INSERT INTO userstats(time, hp, attack, deff, power, accuracy, oratory, agility, raids)"
-                        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (self.time, self.hp, self.attack, self.deff, self.power, self.accuracy, self.oratory,
-                         self.agility, self.raids))
+            cur.execute(
+                "INSERT INTO userstats(time, hp, attack, deff, power, accuracy, oratory, agility, raids, stamina)"
+                " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (self.time, self.hp, self.attack, self.deff, self.power, self.accuracy, self.oratory,
+                 self.agility, self.raids, self.stamina))
             self.id = cur.lastrowid
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
@@ -41,7 +43,7 @@ class PlayerStat:
         try:
             cur.execute("SELECT * FROM userstats WHERE id=?", (self.id,))
             self.time, self.hp, self.attack, self.deff, self.power, self.accuracy, self.oratory, self.agility, \
-            self.raids = cur.fetchone()[1:10]
+                self.raids, self.stamina = cur.fetchone()[1:11]
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
             return -1
@@ -50,9 +52,9 @@ class PlayerStat:
         try:
             cur.execute("""UPDATE userstats SET
                         time = ? , hp = ? , attack = ? , deff = ? , power = ? , accuracy = ? , oratory = ? ,
-                        agility = ? WHERE id=?""",
+                        agility = ?, stamina = ? WHERE id=?""",
                         (self.time, self.hp, self.attack, self.deff, self.power, self.accuracy,
-                         self.oratory, self.agility, self.id))
+                         self.oratory, self.agility, self.stamina, self.id))
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
             return -1
@@ -70,8 +72,8 @@ class PlayerStat:
         return self.hp + self.attack + self.agility + self.accuracy + self.oratory
 
     def copy_stats(self, ps):
-        self.time, self.hp, self.attack, self.deff, self.power, self.oratory, self.agility, self.accuracy, self.raids = \
-            ps.time, ps.hp, ps.attack, ps.deff, ps.power, ps.oratory, ps.agility, ps.accuracy, ps.raids
+        self.time, self.hp, self.attack, self.deff, self.power, self.oratory, self.agility, self.accuracy, self.raids, self.stamina = \
+            ps.time, ps.hp, ps.attack, ps.deff, ps.power, ps.oratory, ps.agility, ps.accuracy, ps.raids, ps.stamina
 
 
 class PlayerSettings:
