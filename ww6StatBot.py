@@ -40,7 +40,8 @@ class Bot:
     def __init__(self):
         self.configure()
         self.re_command = re.compile(
-            r'/(?P<command>(?P<name>[^\s_@]+)(_(?P<modifier>[^\s@]+))?)({})?\s*(?P<argument>.*)'.format(self.tg_bot_name),
+            r'/(?P<command>(?P<name>[^\s_@]+)(_(?P<modifier>[^\s@]+))?)({})?\s*(?P<argument>.*)'.format(
+                self.tg_bot_name),
             re.DOTALL)
         conn = None
         try:
@@ -55,6 +56,7 @@ class Bot:
         cur.execute('CREATE TABLE IF NOT EXISTS admins (id INTEGER)')
         cur.execute('CREATE TABLE IF NOT EXISTS raids (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS blacklist (id INTEGER)')
+        cur.execute('CREATE TABLE IF NOT EXISTS triggers (trigger TEXT, chat TEXT, text TEXT)')
         cur.execute(
             'CREATE TABLE IF NOT EXISTS settings (id REFERENCES users(id) ON DELETE CASCADE, sex TEXT, keyboard INT, raidnotes INT)')
         cur.execute('CREATE TABLE IF NOT EXISTS state (data TEXT)')  # not The best solution ever but it will do
@@ -74,6 +76,7 @@ class Bot:
         self.viva_six = {}
         self.apm = {}
         self.keyboards = {}
+        self.triggers = {'all': {}}
         self.keyboards[Player.KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup(
             [[telega.KeyboardButton("💽 Моя статистика"),
               telega.KeyboardButton("🎖 Топы")],
@@ -112,6 +115,12 @@ class Bot:
             self.squadnames[r[1].lower()] = r[0]
             self.squadids[r[1].lower()] = r[2]
             self.squads_by_id[r[2]] = r[1].lower()
+        cur.execute("SELECT * FROM triggers")
+        for r in cur.fetchall():
+            tr, sq, tx = r
+            if sq not in self.triggers.keys():
+                self.triggers[sq] = {}
+            self.triggers[sq][tr] = tx
         cur.close()
 
         self.updater = Updater(token=self.tg_token)
@@ -279,7 +288,7 @@ class Bot:
             self.message_manager.send_message(chat_id=chat_id,
                                               text="Пользователь @" + master + " ещё не зарегестрирован")
             return
-        if (short in self.squadnames.keys()) or short == "none":
+        if (short in self.squadnames.keys()) or short in ("none", "all"):
             self.message_manager.send_message(chat_id=chat_id, text="Краткое имя \"" + short + "\" уже занято")
             return
         r = (title, short, chat_id)
@@ -291,6 +300,55 @@ class Bot:
         self.add_master(cur, bot, master, id, short)
         self.message_manager.send_message(chat_id=chat_id,
                                           text="Создан отряд " + self.squadnames[short] + " aka " + short)
+
+    def trigger(self, trigger, chat):
+        sq = self.squads_by_id.get(chat)
+        text = ""
+        if sq and sq in self.triggers.keys() and trigger in self.triggers[sq].keys():
+            text = self.triggers[sq][trigger]
+        elif trigger in self.triggers['all'].keys():
+            text = self.triggers['all'][trigger]
+        if text:
+            self.message_manager.send_message(chat_id=chat, text=text, parse_mode="HTML")
+        return text
+
+    def add_trigger(self, argument, cur:sql.Cursor):
+        m = re.match(r'/(?P<trigger>[\S]+)[\s]+(?P<all>(?P<sq>[\S]+)[\s]*(?P<text>.*))', argument, re.DOTALL)
+        if m:
+            tg = m.group('trigger')
+            all = m.group('all')
+            sq = m.group('sq')
+            text = m.group('text')
+
+            if sq in self.squadids.keys():
+                if self.triggers.get(sq) and self.triggers[sq].get(tg):
+                    cur.execute('update triggers SET text=? WHERE chat=? AND trigger=?', (text, sq, tg))
+                else:
+                    cur.execute('INSERT into triggers(trigger, chat, text) VALUES(?, ?, ?)', (tg, sq, text))
+                if sq not in self.triggers.keys():
+                    self.triggers[sq] = {}
+                self.triggers[sq][tg] = text
+                return tg, text
+            sq = 'all'
+            text = all
+            if self.triggers.get(sq) and self.triggers[sq].get(tg):
+                cur.execute('update triggers SET text=? WHERE chat=? AND trigger=?', (text, sq, tg))
+            else:
+                cur.execute('INSERT into triggers(trigger, chat, text) VALUES(?, ?, ?)', (tg, sq, text))
+            self.triggers['all'][tg] = all
+            return tg, all
+        return None
+
+    def del_trigger(self, argument, cur:sql.Cursor):
+        m = re.match(r'/(?P<trigger>[\S]+)', argument, re.DOTALL)
+        if m:
+            tg = m.group('trigger')
+            for sq, dic in self.triggers.items():
+                if dic.get(tg):
+                    del(dic[tg])
+                    cur.execute('DELETE from triggers WHERE chat=? AND trigger=?', (sq, tg))
+            return tg
+        return None
 
     def stat(self, bot, id, chat_id, n, textmode=False):
         player = self.users[id]
@@ -488,7 +546,7 @@ class Bot:
                                                   callbackargs=(call_back_chat, pl),
                                                   text=message)
 
-    def demand_squads(self, text, user, bot, allow_empty=False):
+    def demand_squads(self, text, user, allow_empty=False):
         if len(text.split()) <= 1:
             self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="сообщения-то и нехватает")
             return None, None
@@ -802,7 +860,7 @@ class Bot:
             else:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Нет такого /echo")
                 return
-            sqs, msg = self.demand_squads(text, user, bot, allow_empty=True)
+            sqs, msg = self.demand_squads(text, user, allow_empty=True)
             if sqs is None:
                 return
             if not sqs and user.id not in self.admins:
@@ -814,14 +872,14 @@ class Bot:
             self.echo(bot, msg, self.users[user.id].chatid, sqs, status)
             self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
         elif command == "echo-s":
-            sqs, msg = self.demand_squads(text, user, bot)
+            sqs, msg = self.demand_squads(text, user)
             if sqs:
                 for sq in sqs:
                     self.message_manager.send_message(chat_id=self.squadids[sq], text=msg,
                                                       reply_markup=telega.ReplyKeyboardRemove())
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
         elif command == "pin":
-            sqs, msg = self.demand_squads(text, user, bot)
+            sqs, msg = self.demand_squads(text, user)
             if sqs:
                 for sq in sqs:
                     pin(bot=bot, chat_id=self.squadids[sq], text=msg, uid=chat_id)
@@ -929,7 +987,7 @@ class Bot:
             if self.pinkm is None:
                 self.pinkm = PinOnlineKm(self.squadids, self.users, self.message_manager, self.db_path,
                                          timer=self.timer)
-            sqs, msg = self.demand_squads(text, user, bot)
+            sqs, msg = self.demand_squads(text, user)
             if sqs:
                 for sq in sqs:
                     self.pinkm.pin(sq, self.users[user.id], msg)
@@ -1103,8 +1161,9 @@ class Bot:
                                                   text="А ты смелый! Просить меня о таком...")
                 return
             text = "<b>Админы</b>\n\t{}\n<b>Командиры</b>\n\t{}".format(
-                "\n\t".join(["@"+self.users[uid].username for uid in self.admins]),
-                "\n\t".join(["@{} <b>{}</b>".format(self.users[uid].username, " ".join(self.masters[uid])) for uid in self.masters.keys()]))
+                "\n\t".join(["@" + self.users[uid].username for uid in self.admins]),
+                "\n\t".join(["@{} <b>{}</b>".format(self.users[uid].username, " ".join(self.masters[uid]))
+                             for uid in self.masters.keys()]))
             self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
         elif command == 'when_raid':
             now = datetime.datetime.now()
@@ -1119,6 +1178,39 @@ class Bot:
             self.message_manager.send_message(chat_id=chat_id,
                                               text="Ближайший рейд в <b>{}:00</b> мск\nТ.е. через <b>{}</b> ч <b>{}</b> мин <b>{}</b> сек"
                                               .format(raid_h, h, m, sec), parse_mode="HTML")
+        elif command == 'add_trigger':
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=chat_id, text="Не не не. Ради тебя я на это не пойду")
+                return
+            res = self.add_trigger(argument, cur)
+            if not res:
+                self.message_manager.send_message(chat_id=chat_id, text="Не удалось добавить тригер")
+                return
+            self.message_manager.send_message(chat_id=chat_id, text="Добавлен тригер\n/{} : {}".format(res[0], res[1]),
+                                              parse_mode="HTML")
+            conn.commit()
+        elif command == 'all_triggers':
+            tgs = []
+            for sq, dic in self.triggers.items():
+                if sq != 'all' and sq != self.squads_by_id.get(chat_id):
+                    continue
+                for tg in dic.keys():
+                    tgs.append('/'+ tg + " (%s)" % sq)
+            text = "Доступные тригеры:\n%s" % ("\n".join(tgs))
+            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        elif command == 'del_trigger':
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=chat_id, text="Не не не. Ради тебя я на это не пойду")
+                return
+            res = self.del_trigger(argument, cur)
+            if not res:
+                self.message_manager.send_message(chat_id=chat_id, text="Не удалось удалить тригер")
+                return
+            conn.commit()
+            self.message_manager.send_message(chat_id=chat_id, text="Удален тригер\n/{}".format(res),
+                                              parse_mode="HTML")
+        elif self.trigger(command, chat_id):
+            pass
         else:
             if message.chat.type == "private":
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
