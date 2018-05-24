@@ -787,7 +787,7 @@ class Bot:
             if type:
                 type = type.strip()
             status = None  # TODO consider using dict instead
-            if type is None:
+            if not type:
                 pass
             elif type == 'lost':
                 status = PinOnlineKm.PlayerStatus.UNKNOWN
@@ -1053,9 +1053,9 @@ class Bot:
                             onplace.append('@' + pl.username)
                         elif st == PinOnlineKm.PlayerStatus.SCARED:
                             scared.append('@' + pl.username)
-            msg = "Уже на точке:\n\t{}\nЕщё в пути:\n\t{}\nНе могут ходить так далеко:\n\t{}\nНе соизволили пойти:\n\t{}\nПропали без вести:\n\t{}".format(
-                "\n\t".join(onplace), "\n\t".join(going), "\n\t".join(scared), "\n\t".join(skipping),
-                "\n\t".join(unknown)
+            msg = "Уже на точке({}):\n\t{}\nЕщё в пути({}):\n\t{}\nНе могут ходить так далеко({}):\n\t{}\nНе соизволили пойти({}):\n\t{}\nПропали без вести({}):\n\t{}".format(
+                len(onplace), "\n\t".join(onplace), len(going), "\n\t".join(going), len(scared), "\n\t".join(scared),
+                len(skipping), "\n\t".join(skipping), len(unknown), "\n\t".join(unknown)
             )
             if sq:
                 msg = "В отряде <b>" + self.squadnames[sq] + "</b>\n" + msg
