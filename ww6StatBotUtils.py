@@ -4,32 +4,8 @@ from telegram.ext import messagequeue as mq
 import threading
 
 
-def send_split(bot, msg, chat_id, N):
-    split = msg.split('\n')
-    for i in range(0, len(split), N):
-        time.sleep(1. / 30)
-        bot.sendMessage(chat_id=chat_id, text='\n'.join(split[i:min(i + N, len(split))]), parse_mode='HTML',
-                        disable_web_page_preview=True)
-
-
-def pin(bot, chat_id, text, uid):
-    id = -1
-    try:
-        id = bot.sendMessage(chat_id=chat_id, text=text, parse_mode='HTML').message_id
-    except:
-        bot.sendMessage(chat_id=uid, text="Не удалось доставить сообщение")
-    time.sleep(0.5)
-    try:
-        bot.pinChatMessage(chat_id=chat_id, message_id=id)
-    except:
-        bot.sendMessage(chat_id=uid, text="Я не смог запинить((")
-        return
-    bot.sendMessage(chat_id=uid, text="Готово\nСообщение в пине")
-
-
 class MessageManager:
     #  see https://github.com/python-telegram-bot/python-telegram-bot/wiki/Avoiding-flood-limits
-
     def __init__(self, bot: telega.Bot, is_queued_def=True, mqueue=None, timer=None):
         self.bot = bot
         # below 2 attributes should be provided for decorator usage
@@ -58,6 +34,30 @@ class MessageManager:
                 callback(e, callbackargs)
         except:
             pass
+
+    def send_split(self,  msg, chat_id, N):
+        split = msg.split('\n')
+        for i in range(0, len(split), N):
+            time.sleep(1. / 30)
+            self.send_message(chat_id=chat_id, text='\n'.join(split[i:min(i + N, len(split))]), parse_mode='HTML',
+                            disable_web_page_preview=True)
+
+    def pin(self, chat_id, text, uid):
+        mid = 0
+        try:
+            mid = self.bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML').message_id
+        except:
+            pass
+        time.sleep(0.5)
+        if not mid:
+            self.send_message(chat_id=uid, text="Не удалось доставить сообщение")
+            return
+        try:
+            self.bot.pinChatMessage(chat_id=chat_id, message_id=mid)
+        except:
+            self.send_message(chat_id=uid, text="Я не смог запинить((")
+            return
+        self.send_message(chat_id=uid, text="Готово\nСообщение в пине")
 
     def update_msg(self, *args, **kwargs):
         with self._lock:

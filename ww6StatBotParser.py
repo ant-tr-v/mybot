@@ -6,8 +6,45 @@ from ww6StatBotUtils import MessageManager
 from ww6StatBotPlayer import PlayerStat
 
 
+class Command:
+    def __init__(self, match=None):
+        self.command = None
+        self.name = None
+        self.argument = None
+        self.modifier = None
+        if match:
+            try:
+                self.command = match.group('command') or ""
+                self.name = match.group('name') or ""
+                self.argument = match.group('argument') or ""
+                self.modifier = match.group('modifier') or ""
+            except:
+                pass
+
+
+class Build:
+    def __init__(self, match=None):
+        self.where = None
+        self.trophy = None
+        self.what = None
+        self.percent = None
+        if match:
+            try:
+                self.where = match.group('where') or ""
+                self.trophy = int(match.group('trophy') or "0")
+                self.what = match.group('what') or ""
+                self.percent = int(match.group('percent') or "0")
+            except:
+                pass
+
+    def __repr__(self):
+        return "where: {}\nwhat: {}\ntrophy: {}\npercent: {}\n".format(self.where or "---", self.what or "---",
+                                                                        self.trophy or "---", self.percent or "---")
+
+
 class ParseResult:
     def __init__(self):
+        self.message = None
         self.stats = None
         self.fraction = None
         self.nic = None
@@ -15,6 +52,8 @@ class ParseResult:
         self.raid_text = None
         self.raid_time = None
         self.timedelta = None
+        self.command = None
+        self.building = None
 
     def __str__(self):
         return "stats: {}\nfrac: {}\nnic: {}, username: {}\nraid_text: {}\n"\
@@ -23,11 +62,18 @@ class ParseResult:
 
 
 class Parser:
-    def __init__(self, message_manager: MessageManager):
+    def __init__(self, message_manager: MessageManager, bot_name):
         self.message_manager = message_manager
         self.WASTELAND_CHAT = 430930191
         self.raid_format = re.compile(
             r'(Рейд[\s]+(?P<msg>в[\s]+((?P<hour>[\d]+)|([-]+)):[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?.*\n.*))')
+        self.re_command = re.compile(
+            r'/(?P<command>(?P<name>[^\s_@]+)(_(?P<modifier>[^\s@]+))?)({})?\s*(?P<argument>.*)'.format(
+                bot_name),
+            re.DOTALL)
+        self.re_trophy = re.compile(r'Твои 🎗Трофеи:[\s]+[\d]+[\s]+шт.[\s]+(?P<where>[^\n]+)[\s]+'
+                                    r'Ты инвестировал в это исследование[\s]+(?P<trophy>[\d]+)[\s]+трофеев.[\s]+'
+                                    r'Исследование:[\s]+(?P<what>[^\n]+)[\s]+Прогресс:[\s]+(?P<percent>[\d]+)')
 
     @staticmethod
     def _parse_forward(message: telega.Message, pr: ParseResult):
@@ -131,11 +177,29 @@ class Parser:
             except:
                 return
 
+    def _parse_command(self, msg:telega.Message, pres:ParseResult):
+        com = Command(self.re_command.match(msg.text))
+        if com.command:
+            pres.command = com
+
+    def _parse_build(self, msg:telega.Message, pres:ParseResult):
+        bld = Build(self.re_trophy.match(msg.text))
+        if bld.percent:
+            pres.building = bld
+
+
+
     def run(self, msg: telega.Message):
         res = ParseResult()
+        res.message = msg
         res.username = msg.from_user.username
+        self._parse_command(msg, res)
         if (msg.forward_from is not None) and (msg.forward_from.id == self.WASTELAND_CHAT):
             self._parse_forward(msg, res)
             self._parse_raid(msg, res)
-            # self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res))
+            self._parse_build(msg, res)
+
+            # if res.building:
+            #     self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res.building))
+            # self.message_manager.send_message(chat_id=msg.from_user.id, text=str(msg.forward_from_message_id))
         return res
