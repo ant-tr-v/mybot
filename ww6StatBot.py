@@ -401,6 +401,8 @@ class Bot:
             s += "<b>\nЛовкость:           </b>" + str(ps.agility - ops.agility)
         if ps.raids - ops.raids:
             s += "<b>\n\nУспешные рейды:     </b>" + str(ps.raids - ops.raids)
+        if ps.building - ops.building:
+            s += "<b>\n\nИсследования:     </b>" + str(ps.building - ops.building)
         if textmode == True:
             return s
         else:
@@ -672,12 +674,16 @@ class Bot:
         uid = parse.message.from_user.id
         date = str(parse.message.forward_date)
         if (uid, date) not in self.building:
-            self.building.add((uid, date))
-            cur.execute('INSERT INTO building(id, time) VALUES(?, ?)', (uid, date))
-            self.users[uid].stats[4].building += parse.building.trophy
-            self.users[uid].stats[4].update_building(cur, uid, date)
-            conn.commit()
-            self.message_manager.send_message(chat_id=uid, text='Ок, апгрейд засчитан\nПродолжай в том же духе')
+            if parse.timedelta < datetime.timedelta(seconds=60):
+                self.building.add((uid, date))
+                cur.execute('INSERT INTO building(id, time) VALUES(?, ?)', (uid, date))
+                self.users[uid].stats[4].building += parse.building.trophy
+                self.users[uid].stats[4].update_building(cur, uid, date)
+                conn.commit()
+                self.message_manager.send_message(chat_id=uid, text='Ок, апгрейд засчитан\nПродолжай в том же духе')
+            else:
+                self.message_manager.send_message(chat_id=uid, text='К сожалению, твой форвард уже протух\nЯ ем только'
+                                                                    ' те, что свежее 5 минут')
         else:
             self.message_manager.send_message(chat_id=uid, text='Кажется, этот форфард я уже видел')
 
@@ -737,7 +743,7 @@ class Bot:
                 return
             self.change(user.id, chat_id, n)
         elif name == 'table':
-            _, ids = self.demand_ids(message, user=user, all=True, offset=2)
+            _, ids = self.demand_ids(message, user=user, all=True, offset=1)
             N = 5
             if modifier.isdigit():
                 N = int(modifier)
@@ -747,16 +753,17 @@ class Bot:
                 self.message_manager.send_message(chat_id=chat_id,
                                                   text="Статы кого-то из них тебе не доступны\nТочно знаю")
                 return
-            text = "юзерка; ник; хп; урон; бронь; сила; меткость; харизма; ловкость; рейды\n"
+            text = "юзерка; ник; хп; урон; бронь; сила; меткость; харизма; ловкость; рейды;стройка\n"
             lines = []
             for uid in ids:
                 pl = self.users[uid]
                 st0 = pl.stats[N - 1]
                 st1 = pl.stats[4]
-                lines.append("{};{};{};{};{};{};{};{};{};{}"
+                lines.append("{};{};{};{};{};{};{};{};{};{};{}"
                              .format(pl.username, pl.nic, st1.hp - st0.hp, st1.attack - st0.attack,
                                      st1.deff - st0.deff, st1.power - st0.power, st1.accuracy - st0.accuracy,
-                                     st1.oratory - st0.oratory, st1.agility - st0.agility, st1.raids - st0.raids))
+                                     st1.oratory - st0.oratory, st1.agility - st0.agility, st1.raids - st0.raids,
+                                     st1.building - st0.building))
             text += "\n".join(lines)
             self.message_manager.send_message(chat_id=chat_id, text=text)
         elif command == 'check_up':
@@ -1084,8 +1091,8 @@ class Bot:
             raids = []
             for pl in self.users.values():
                 if sq is None or pl.squad == sq:
-                    cur.execute(r'SELECT * FROM raids WHERE id = ? AND time > ?', (pl.id, start))
-                    raids.append((len(cur.fetchall()), pl.nic, pl.username))
+                    cur.execute(r'SELECT COUNT(*) FROM raids WHERE id = ? AND time > ?', (pl.id, start))
+                    raids.append((int(cur.fetchone()[0]), pl.nic, pl.username))
             raids.sort(reverse=True)
             if sq:
                 msg = "Топ рейдеров отряда <b>" + self.squadnames[sq] + "</b>\nНачиная с " + start.split('.')[
@@ -1308,6 +1315,7 @@ class Bot:
             if oldps is not None:
                 player.set_stats(cur, oldps, 3)
                 ps.raids = oldps.raids
+                ps.building = oldps.building
             date = parse_result.raid_time
             # TODO make raid incrementation separated from stat update
             if date and ((user.id, date) not in self.raids):

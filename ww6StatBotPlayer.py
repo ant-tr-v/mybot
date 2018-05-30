@@ -182,7 +182,7 @@ class Player:
             self.stats[n].copy_stats(ps)
             self.stats[n].update_stats(cur)
             self.stats[n].update_raids(cur)
-            self.stats[n].update_build(cur)
+            self.stats[n].update_building(cur)
             self.update_id(cur, n)
             return self.stats[n]
 

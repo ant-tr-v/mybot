@@ -139,7 +139,6 @@ class Parser:
             pass
         else:
             pr.nic = nic
-            pr.timedelta = datetime.datetime.now() - message.forward_date
             pr.stats = ps
 
     def _parse_raid(self, message: telega.Message, pr: ParseResult):
@@ -194,6 +193,7 @@ class Parser:
         res.message = msg
         res.username = msg.from_user.username
         self._parse_command(msg, res)
+        res.timedelta = datetime.datetime.now() - msg.forward_date if (msg.forward_from is not None) else 0
         if (msg.forward_from is not None) and (msg.forward_from.id == self.WASTELAND_CHAT):
             self._parse_forward(msg, res)
             self._parse_raid(msg, res)
@@ -201,5 +201,5 @@ class Parser:
 
             # if res.building:
             #     self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res.building))
-            # self.message_manager.send_message(chat_id=msg.from_user.id, text=str(msg.forward_from_message_id))
+            self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res))
         return res
