@@ -201,5 +201,5 @@ class Parser:
 
             # if res.building:
             #     self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res.building))
-            self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res))
+            # self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res))
         return res
