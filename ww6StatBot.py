@@ -264,9 +264,8 @@ class Bot:
             return False
         cur.execute("INSERT INTO masters(id, name) VALUES (?, ?)", (id, sq))
         if id not in self.masters.keys():
-            self.masters[id] = [sq]
-        else:
-            self.masters[id].add(sq)
+            self.masters[id] = set()
+        self.masters[id].add(sq)
         return True
 
     def del_master(self, cur, id, adminid):
