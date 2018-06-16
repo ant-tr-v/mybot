@@ -38,7 +38,7 @@ class Notificator:
                 if i % 3 == 0:
                     msg = "Скоро рейд! Ты уже выш{}?".format("ла" if female else "ел")
                 elif i % 3 == 1:
-                    msg = "Скоро рейд! Ты уже в отметил{} в пине?".format("ась" if female else "ся")
+                    msg = "Скоро рейд! Ты уже отметил{} в пине?".format("ась" if female else "ся")
                 else:
                     msg = "Недавно был рейд. Ты обновил{} профиль?".format("а" if female else "")
                 try:

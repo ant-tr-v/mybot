@@ -75,6 +75,7 @@ class Bot:
         self.kick = {}
         self.viva_six = {}
         self.apm = {}
+        self.apm_window = 0
         self.keyboards = {}
         self.triggers = {'all': {}}
         self.keyboards[Player.KeyboardType.DEFAULT] = telega.ReplyKeyboardMarkup(
@@ -194,17 +195,16 @@ class Bot:
                                           reply_markup=self.keyboards[Player.KeyboardType.DEFAULT])
 
     def update_apm(self, uid):
+        if self.timer.ticks * self.timer.interval > self.apm_window * 60:
+            self.apm_window = self.timer.ticks * self.timer.interval // 60 + 1
+            self.apm.clear()
         if uid not in self.apm.keys():
-            self.apm[uid] = set()
-        now = datetime.datetime.now()
-        self.apm[uid].add(now)
-        tmp = self.apm[uid].copy()
-        for t in tmp:
-            if now - t > datetime.timedelta(seconds=70):
-                self.apm[uid].remove(t)
-        if len(self.apm[uid]) > 15:
-            self.message_manager.send_message(chat_id=self.users[uid].chatid, text="не спами")
-        if len(self.apm[uid]) > 20:
+            self.apm[uid] = 1
+        else:
+            self.apm[uid] += 1
+        if self.apm[uid] > 20:
+            self.message_manager.send_message(chat_id=uid, text="не бей по кнопкам - отвалятся")
+        if self.apm[uid] > 30:
             self.message_manager.send_message(chat_id=self.ratelimit_report_chat_id,
                                               text="Игрок @" + self.users[uid].username + " спамит")
 
@@ -541,19 +541,26 @@ class Bot:
         self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True)
 
     def _err_callback(self, e: telega.TelegramError, args):
-        call_back_chat, pl = args
-        if call_back_chat and "bot was blocked by the user" in e.message:
-            self.message_manager.send_message(chat_id=call_back_chat,
-                                              text="Игрок @{} заблокировал меня((".format(pl.username))
+        block_list, pl = args
+        if "bot was blocked by the user" in e.message:
+            block_list.append(pl.username)
 
-    def echo(self, message, call_back_chat=None, squads=None, status: PinOnlineKm.PlayerStatus = None):
+
+
+    def echo(self, message, call_back_chat, squads=None, status: PinOnlineKm.PlayerStatus = None):
         """squads should be iterable, no rights are checked"""
+        block_list = []
         for pl in self.users.values():
             if (not squads or pl.squad in squads) and \
                     (status is None or (self.pinkm and self.pinkm.player_status(pl) == status)):
                 self.message_manager.send_message(chat_id=pl.chatid, callback=self._err_callback,
-                                                  callbackargs=(call_back_chat, pl),
+                                                  callbackargs=(block_list, pl),
                                                   text=message)
+
+        self.message_manager.send_message(chat_id=call_back_chat, text="Ваш зов был услышан").result()
+        if block_list:
+            self.message_manager.send_message(chat_id=call_back_chat, text="Меня заблокировали:\n%s"
+                                                                           % "".join(['\n@' + val for val in block_list]))
 
     def demand_squads(self, text, user, allow_empty=False):
         if len(text.split()) <= 1:
@@ -673,7 +680,7 @@ class Bot:
         uid = parse.message.from_user.id
         date = str(parse.message.forward_date)
         if (uid, date) not in self.building:
-            if parse.timedelta < datetime.timedelta(seconds=60):
+            if parse.timedelta < datetime.timedelta(seconds=300):
                 self.building.add((uid, date))
                 cur.execute('INSERT INTO building(id, time) VALUES(?, ?)', (uid, date))
                 self.users[uid].stats[4].building += parse.building.trophy
@@ -899,7 +906,6 @@ class Bot:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="А писать-то и нечего")
                 return
             self.echo(msg, self.users[user.id].chatid, sqs, status)
-            self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
         elif command == "echo-s":
             sqs, msg = self.demand_squads(text, user)
             if sqs:

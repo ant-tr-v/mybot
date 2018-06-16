@@ -162,12 +162,12 @@ class Parser:
                 elif day is None:
                     ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
                                               hour=int(hour) % 24)
-                    if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
+                    if message.forward_date - ddate < -datetime.timedelta(seconds=1):
                         ddate = ddate - datetime.timedelta(days=1)
                 else:
                     ddate = datetime.datetime(year=date.year, month=int(month), day=int(day),
                                               hour=int(hour) % 24)
-                    if message.forward_date - ddate < datetime.timedelta(milliseconds=10):
+                    if message.forward_date - ddate < -datetime.timedelta(seconds=1):
                         ddate = datetime.datetime(ddate.year - 1, ddate.month, ddate.day, ddate.hour)
 
                 date = str(ddate).split('.')[0]
@@ -183,7 +183,7 @@ class Parser:
 
     def _parse_build(self, msg:telega.Message, pres:ParseResult):
         bld = Build(self.re_trophy.match(msg.text))
-        if bld.percent:
+        if bld.what:
             pres.building = bld
 
 

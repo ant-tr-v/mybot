@@ -82,7 +82,7 @@ class MessageManager:
 class Timer:
     """one can add tascks but don't delete them, tasks arguments are not supported"""
     def __init__(self, interval=2):
-        self._interval = interval
+        self.interval = interval
         self._thread = threading.Thread(target=self._loop)
         self._lock = threading.RLock()
         self.tasks = {}
@@ -122,7 +122,7 @@ class Timer:
     def _loop(self):
         while self._goone:
             t = time.time()
-            interval = max(self._interval - (time.time() - t), 0.01)
+            interval = max(self.interval - (time.time() - t), 0.01)
             for ind, task in list(self.tasks.items()):
                 if self.ticks % self.rate[ind] == 0:
                     try:
