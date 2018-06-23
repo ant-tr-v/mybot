@@ -1053,23 +1053,6 @@ class Bot:
             else:
                 self.message_manager.bot.sendSticker(chat_id=chat_id, sticker="CAADAgADgAAD73zLFnbBnS7BK3KuAg")
             self.viva_six[chat_id] += 1
-        elif command == "faq":
-            text = "<b>Неплохой FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3\n"
-            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
-                                              disable_web_page_preview=False)
-        elif command == "dungs":
-            text = "<b>Гайд по подземельям: </b> http://telegra.ph/Gajd-po-podzemelyam-04-26\n"
-            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
-                                              disable_web_page_preview=False)
-        elif command == "rfm":
-
-            text = "<b>Гайд для новичка: </b> {}\n ".format("telegra.ph/FAQ-po-igre-Wasteland-Wars-04-06-2"
-                                                            if self.squads_by_id.get(chat_id) in (
-                'ls', 'ld', 'la', 'vd') else
-                                                            "telegra.ph/FAQ-po-igre-Wasteland-Wars-04-16")
-
-            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
-                                              disable_web_page_preview=False)
         elif command == 'squads':
             self.list_squads(chat_id, (user.id in self.admins))
         elif command == 'whois':
@@ -1227,7 +1210,7 @@ class Bot:
         elif command == 'all_triggers':
             tgs = []
             for sq, dic in self.triggers.items():
-                if sq != 'all' and sq != self.squads_by_id.get(chat_id):
+                if not user.id in self.admins and sq != 'all' and sq != self.squads_by_id.get(chat_id):
                     continue
                 for tg in dic.keys():
                     tgs.append('/'+ tg + " (%s)" % sq)
