@@ -39,26 +39,41 @@ class Build:
 
     def __repr__(self):
         return "where: {}\nwhat: {}\ntrophy: {}\npercent: {}\n".format(self.where or "---", self.what or "---",
-                                                                        self.trophy or "---", self.percent or "---")
+                                                                       self.trophy or "---", self.percent or "---")
 
+
+class Profile:
+    def __init__(self, match=None):
+        self.nic = None
+        self.fraction = None
+        self.stats = None
+        self.hp_now = None
+        self.stamina_now = None
+        self.hunger = None
+        self.distance = None
+        self.location = None
+        if match:
+            self.nic, self.fraction, self.location = match.group('nic', 'fraction', 'location')
+            self.nic = self.nic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            hp, hp_now, hunger, attack, armor, power, accuracy, oratory, agility, stamina, stamina_now, distance = \
+                [int(x) for x in match.group('hp', 'hp_now', 'hunger', 'attack', 'armor', 'power', 'accuracy', 'oratory',
+                                             'agility', 'stamina', 'stamina_now', 'distance')]
+            self.hp_now, self.stamina_now, self.distance = hp_now, stamina_now, distance
+            self.stats = PlayerStat()
+            self.stats.hp, self.stats.stamina, self.stats.agility, self.stats.oratory, self.stats.accuracy, \
+            self.stats.power, self.stats.attack, self.stats.deff = hp, stamina, agility, oratory, accuracy, power, \
+                                                                   attack, armor
 
 class ParseResult:
     def __init__(self):
         self.message = None
-        self.stats = None
-        self.fraction = None
-        self.nic = None
         self.username = None
         self.raid_text = None
         self.raid_time = None
         self.timedelta = None
         self.command = None
         self.building = None
-
-    def __str__(self):
-        return "stats: {}\nfrac: {}\nnic: {}, username: {}\nraid_text: {}\n"\
-            .format('+' if self.stats else "-", self.fraction or "-", self.nic or '-',
-                    self.username or '-', self.raid_text or '-')
+        self.profile = None
 
 
 class Parser:
@@ -74,72 +89,27 @@ class Parser:
         self.re_trophy = re.compile(r'Твои 🎗Трофеи:[\s]+[\d]+[\s]+шт.[\s]+(?P<where>[^\n]+)[\s]+'
                                     r'Ты инвестировал в это исследование[\s]+(?P<trophy>[\d]+)[\s]+трофеев.[\s]+'
                                     r'Исследование:[\s]+(?P<what>[^\n]+)[\s]+Прогресс:[\s]+(?P<percent>[\d]+)')
+        self.re_profile = re.compile(r'\n(?P<nic>[^\n]*)\n👥Фракция:[\s]*(?P<fraction>[^\n]*)[\s]+'
+                                     r'❤️Здоровье:[\s]+(?P<hp_now>[\d]+)/(?P<hp>[\d]+)[\s]+🍗Голод:[\s]+(?P<hunger>[\d]+)%'
+                                     r'[\s]+⚔️Урон:[\s]+(?P<attack>[\d]+)[\s]+🛡Броня:[\s]+(?P<armor>[\d]+)[\s]+'
+                                     r'💪Сила:[\s]+(?P<power>[\d]+)[\s]+🔫Меткость:[\s]+(?P<accuracy>[\d]+)[\s]+'
+                                     r'🗣Харизма:[\s]+(?P<oratory>[\d]+)[\s]+🤸🏽‍♂️Ловкость:[\s]+(?P<agility>[\d]+)[\s]+'
+                                     r'🔋Выносливость:[\s]+(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[\s]+'
+                                     r'🔥Локация:[\s]+(?P<location>[^\n]*)\n👣Расстояние:[\s]+(?P<distance>[\d]+)')
+        self.re_profile_short = re.compile(
+            r'👤(?P<nic>[^\n]*)\n├(?P<fraction>[^\n]*)\n├❤️(?P<hp_now>[\d]+)/(?P<hp>[\d]+)'
+            r'[^\d]+(?P<hunger>[\d]+)[^\d]+(?P<attack>[\d]+)[^\d]+[^\d]*(?P<armor>[\d]+)'
+            r'[^\d]+(?P<power>[\d]+)[^\d]+[^\d]*(?P<accuracy>[\d]+)'
+            r'[^\d]+(?P<oratory>[\d]+)[^\d]+(?P<agility>[\d]+)'
+            r'[^\d]+(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[^\d]+👣(?P<distance>[\d]+)\n'
+            r'├🔥(?P<location>[^\n]+)')
 
-    @staticmethod
-    def _parse_forward(message: telega.Message, pr: ParseResult):
-        # TODO rewrite using re
-        text = message.text.strip(" \n\t")
-        tlines = text.split("\n")
-        ps = None
+    def _parse_forward(self, message: telega.Message, pr: ParseResult):
+        match = self.re_profile.search(message.text) or self.re_profile_short.search(message.text)
+        if match:
+            pr.profile = Profile(match)
+            pr.profile.stats.time = message.forward_date
 
-        nic = ""
-        try:
-            ps = PlayerStat()
-            n = -1
-            for i in range(1, len(tlines)):
-                if tlines[i] and tlines[i][0] == '├' and tlines[i - 1][0] == '├':
-                    n = i - 2
-                    break
-            if n >= 0:
-                pr.fraction = tlines[n + 1][1:]
-                nic = tlines[n][1:]
-                ps.hp, hanger, ps.attack, ps.deff = [int("".join([c for c in x if c.isdigit()])) for x in
-                                                     tlines[n + 2][tlines[n + 2].find("/"):].split('|')]
-                ps.power, ps.accuracy = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n + 3].split('|')]
-                ps.oratory, ps.agility = [int("".join([c for c in x if c.isdigit()])) for x in tlines[n + 4].split('|')]
-                m = re.search(r"[\d]+/(?P<stamina>[\d]+)", tlines[n + 5])
-                ps.stamina = int(m.group('stamina')) if m else 5
-            else:
-                nl = 2  # МАГИЧЕСКАЯ КОНСТАНТА номер строки с ником игрока [первый возможный]
-                while nl < len(tlines):
-                    m = re.search(r'Фракция:(?P<val>.+)', tlines[nl + 1])
-                    if m:
-                        pr.fraction = m.group('val').strip()
-                        break
-                    nl += 1
-                nic = tlines[nl].strip()
-                for i in range(nl + 1, len(tlines)):
-                    m = re.search(r'Здоровье:[\s][\d]+/(?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.hp = int(m.group('val'))
-                    m = re.search(r'Урон:[\s](?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.attack = int(m.group('val'))
-                    m = re.search(r'Броня:[\s](?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.deff = int(m.group('val'))
-                    m = re.search(r'Сила:[\s](?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.power = int(m.group('val'))
-                    m = re.search(r'Меткость:[\s](?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.accuracy = int(m.group('val'))
-                    m = re.search(r'Харизма:[\s](?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.oratory = int(m.group('val'))
-                    m = re.search(r'Ловкость:[\s](?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.agility = int(m.group('val'))
-                    m = re.search(r'Выносливость:[\s][\d]+/(?P<val>[\d]+)', tlines[i])
-                    if m:
-                        ps.stamina = int(m.group('val'))
-            ps.time = message.forward_date
-            nic = nic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        except:
-            pass
-        else:
-            pr.nic = nic
-            pr.stats = ps
 
     def _parse_raid(self, message: telega.Message, pr: ParseResult):
         text = message.text
@@ -176,17 +146,15 @@ class Parser:
             except:
                 return
 
-    def _parse_command(self, msg:telega.Message, pres:ParseResult):
+    def _parse_command(self, msg: telega.Message, pres: ParseResult):
         com = Command(self.re_command.match(msg.text))
         if com.command:
             pres.command = com
 
-    def _parse_build(self, msg:telega.Message, pres:ParseResult):
+    def _parse_build(self, msg: telega.Message, pres: ParseResult):
         bld = Build(self.re_trophy.match(msg.text))
         if bld.what:
             pres.building = bld
-
-
 
     def run(self, msg: telega.Message):
         res = ParseResult()

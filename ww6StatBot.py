@@ -1257,12 +1257,13 @@ class Bot:
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
         parse_result = self._parser.run(message)
-        if parse_result.stats is not None and message.chat.type == "private":
+        if parse_result.profile is not None and message.chat.type == "private":
+            profile = parse_result.profile
             if user.id not in self.users.keys():
-                if parse_result.fraction != "⚙️Убежище 6":
+                if profile.fraction != "⚙️Убежище 6":
                     self.message_manager.send_message(chat_id=chat_id, text="А ты фракцией не ошибся?")
                     return
-                if parse_result.timedelta > datetime.timedelta(minutes=2):
+                if profile.timedelta > datetime.timedelta(minutes=2):
                     self.message_manager.send_message(chat_id=chat_id, text="А можно профиль посвежее?")
                     return
                 self.users[user.id] = Player(cur)
@@ -1285,8 +1286,8 @@ class Bot:
             self.usersbyname[parse_result.username.lower()] = user.id
             player.update_text(cur)
             if player.nic == "" or parse_result.timedelta < datetime.timedelta(seconds=15):
-                player.nic = parse_result.nic
-            elif player.nic != parse_result.nic:
+                player.nic = profile.nic
+            elif player.nic != profile.nic:
                 self.message_manager.send_message(chat_id=player.chatid,
                                                   text="🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n<i>Успей переслать его из игрового бота за 15 секунд</i>\n"
                                                        "Если ты сменил игровой ник и у тебя лапки обратись к @ant_ant или своему командиру\n"
@@ -1298,7 +1299,7 @@ class Bot:
             player.update_text(cur)
 
             oldps = player.get_stats(4)
-            ps = parse_result.stats
+            ps = profile.stats
             ps.raids = 0
             if oldps is not None:
                 player.set_stats(cur, oldps, 3)
