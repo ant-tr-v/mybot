@@ -91,9 +91,12 @@ class Parser:
                                     r'Исследование:[\s]+(?P<what>[^\n]+)[\s]+Прогресс:[\s]+(?P<percent>[\d]+)')
         self.re_profile = re.compile(r'\n(?P<nic>[^\n]*)\n👥Фракция:[\s]*(?P<fraction>[^\n]*)[\s]+'
                                      r'❤️Здоровье:[\s]+(?P<hp_now>[\d]+)/(?P<hp>[\d]+)[\s]+🍗Голод:[\s]+(?P<hunger>[\d]+)%'
-                                     r'[\s]+⚔️Урон:[\s]+(?P<attack>[\d]+)[\s]+🛡Броня:[\s]+(?P<armor>[\d]+)[\s]+'
-                                     r'💪Сила:[\s]+(?P<power>[\d]+)[\s]+🔫Меткость:[\s]+(?P<accuracy>[\d]+)[\s]+'
-                                     r'🗣Харизма:[\s]+(?P<oratory>[\d]+)[\s]+🤸🏽‍♂️Ловкость:[\s]+(?P<agility>[\d]+)[\s]+'
+                                     r'[\s]+⚔️Урон:[\s]+(?P<attack>[\d]+)([\s]*\([^)]*\))?'
+                                     r'[\s]*🛡Броня:[\s]+(?P<armor>[\d]+)([\s]*\([^)]*\))?[\s]*'
+                                     r'💪Сила:[\s]+(?P<power>[\d]+)([\s]*\([^)]*\))?[\s]*'
+                                     r'🔫Меткость:[\s]+(?P<accuracy>[\d]+)([\s]*\([^)]*\))?[\s]*'
+                                     r'🗣Харизма:[\s]+(?P<oratory>[\d]+)([\s]*\([^)]*\))?[\s]*'
+                                     r'🤸🏽‍♂️Ловкость:[\s]+(?P<agility>[\d]+)([\s]*\([^)]*\))?[\s]*'
                                      r'🔋Выносливость:[\s]+(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[\s]+'
                                      r'🔥Локация:[\s]+(?P<location>[^\n]*)\n👣Расстояние:[\s]+(?P<distance>[\d]+)')
         self.re_profile_short = re.compile(
