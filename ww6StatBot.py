@@ -1263,7 +1263,7 @@ class Bot:
                 if profile.fraction != "⚙️Убежище 6":
                     self.message_manager.send_message(chat_id=chat_id, text="А ты фракцией не ошибся?")
                     return
-                if profile.timedelta > datetime.timedelta(minutes=2):
+                if parse_result.timedelta > datetime.timedelta(minutes=2):
                     self.message_manager.send_message(chat_id=chat_id, text="А можно профиль посвежее?")
                     return
                 self.users[user.id] = Player(cur)
