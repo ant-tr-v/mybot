@@ -84,6 +84,9 @@ class PinOnlineKm:
     def add(self, uid, km, squad, recount=True):
         if uid not in self.players.keys() or km not in self.ordered_kms or squad not in self.squads.keys():
             return True
+        if self.players[uid].squad != squad:
+            self.message_manager.send_message(chat_id=uid, text="Пожалуйста, отмечайся в пине своего отряда")
+            return True
         if uid in self.players_online.keys() and self.players_online[uid]['km'] == km \
                 and self.players_online[uid]['squad'] == squad:
             return False
