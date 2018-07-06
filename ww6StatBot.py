@@ -125,7 +125,8 @@ class Bot:
             self.triggers[sq][tr] = tx
         cur.close()
 
-        self.updater = Updater(token=self.tg_token)
+        self.updater = Updater(
+            token=self.tg_token, request_kwargs=self.tg_request_kwargs)
         self.timer = Timer()
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
         self.pinkm = PinOnlineKm(self.squadids, self.users, self.message_manager, self.db_path,
@@ -175,6 +176,21 @@ class Bot:
                     raise Exception(
                         '%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH, opt, section))
                 setattr(self, '_'.join([section, opt]), cfg_opts[opt])
+
+        # Proxy support
+        self.tg_use_proxy = False
+        self.tg_request_kwargs = {}
+        if 'proxy' in c:
+            proxy_config = c['proxy']
+
+            self.tg_use_proxy = True
+            self.tg_request_kwargs = {
+                'proxy_url': proxy_config['url'],
+                'urllib3_proxy_kwargs': {
+                    'username': proxy_config['username'],
+                    'password': proxy_config['password']
+                }
+            }
 
     def handle_start(self, bot, update):
         message = update.message
