@@ -65,6 +65,20 @@ class Bot:
                         '%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH, opt, section))
                 setattr(self, '_'.join([section, opt]), cfg_opts[opt])
 
+        self.tg_use_proxy = False
+        self.tg_request_kwargs = {}
+        if 'proxy' in c:
+            proxy_config = c['proxy']
+
+            self.tg_use_proxy = True
+            self.tg_request_kwargs = {
+                'proxy_url': proxy_config['url'],
+                'urllib3_proxy_kwargs': {
+                    'username': proxy_config['username'],
+                    'password': proxy_config['password']
+                }
+            }
+
         # loading keyboards
         f = open(self.DATA_PATH, "r", encoding='utf-8')
         if not f:
@@ -87,7 +101,8 @@ class Bot:
         self.commands = {'stat'}  # TODO may be we should check them automatically from methods' names or load from json
 
         self.timer = Timer()
-        self.updater = Updater(token=self.tg_token)
+        self.updater = Updater(
+            token=self.tg_token, request_kwargs=self.tg_request_kwargs)
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
         self.parser = Parser.Parser(self.message_manager, self.tg_bot_name)
 
