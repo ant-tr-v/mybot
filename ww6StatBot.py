@@ -14,6 +14,7 @@ import datetime
 import time
 import re
 import yaml
+import json
 import logging
 import sys
 from enum import Enum
@@ -38,7 +39,7 @@ class StatType(Enum):
 
 class Bot:
     CONFIG_PATH = 'bot.yml'
-    DATA_PATH = 'text.yml'
+    DATA_PATH = 'text.json'
 
     def load_yaml(self):
         f = open(self.CONFIG_PATH)
@@ -62,10 +63,12 @@ class Bot:
                         '%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH, opt, section))
                 setattr(self, '_'.join([section, opt]), cfg_opts[opt])
 
-        f = open(self.DATA_PATH)
+        f = open(self.DATA_PATH, "r", encoding='utf-8')
         if not f:
             raise Exception('missed config file %s. check example at bot.yml.dist' % self.CONFIG_PATH)
-        c = yaml.load(f)
+        t = f.read()
+        #print(t)
+        c = json.loads(t)
 
         keyboards = {'default': Player.KeyboardType.DEFAULT}
         for ktype in keyboards.keys():
@@ -85,12 +88,20 @@ class Bot:
         self.timer = Timer()
         self.updater = Updater(token=self.tg_token)
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
+        self.parser = parser.Parser(self.message_manager, self.tg_bot_name)
+
         massage_handler = MessageHandler(Filters.text | Filters.command, self.handle_massage)
         start_handler = CommandHandler('start', self.handle_start)
+        self.updater.dispatcher.add_handler(start_handler)
+        self.updater.dispatcher.add_handler(massage_handler)
+
+        self.updater.start_polling()
+        self.updater.idle()
 
     def handle_start(self, bot, update):
         message = update.message
         user = message.from_user
+        print(1)
         if message.chat.type != "private":
             return
         if user.id in self.blacklist:
@@ -102,9 +113,36 @@ class Bot:
                                               text="Привет, давай знакомиться.\nКидай мне форвард своих статов",
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
+
+        print(2)
         self.players[user.id].keyboard = Player.KeyboardType.DEFAULT
         self.message_manager.send_message(chat_id=message.chat_id, text="Рад тебя видеть",
                                           reply_markup=self.keyboards[Player.KeyboardType.DEFAULT])
+
+    def handle_massage(self, bot, update: telega.Update):
+        message = update.message
+        chat_id = message.chat_id
+        user = message.from_user
+        print(1)
+
+        parse_result = self.parser.run(message)
+        print(2)
+
+        print(self.players)
+        if user.id not in self.players.keys():
+            print(2.5)
+            if parse_result.profile:
+                self.message_manager.send_message(chat_id=chat_id, text='О! Провиль!')
+
+            print(2.6)
+            self.handle_start(bot, update)
+            return
+
+        print(3)
+
+
+
+
 
     # def __init__(self):
     #     self.configure()
@@ -1803,4 +1841,3 @@ if __name__ == "__main__":
     # set_stderr_debug_logger()
 
     stat_bot = Bot()
-    stat_bot.start()

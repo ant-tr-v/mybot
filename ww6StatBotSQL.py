@@ -10,23 +10,23 @@ class SQLManager:
         cur.executescript('CREATE TABLE IF NOT EXISTS users(uid integer UNIQUE, username text, nic text);'
                           'CREATE TABLE IF NOT EXISTS blacklist(uid integer UNIQUE on conflict IGNORE);'
                           'CREATE TABLE IF NOT EXISTS admins(uid integer UNIQUE on conflict IGNORE);'
-                          'CREATE TABLE IF NOT EXISTS raids(uid integer references users.uid on delete CASCADE, time text);'
-                          'CREATE TABLE IF NOT EXISTS building(uid integer references users.uid on delete CASCADE, time text);'
-                          'CREATE TABLE IF NOT EXISTS karma(uid integer references users.uid on delete CASCADE, time text, value integer);'
+                          'CREATE TABLE IF NOT EXISTS raids(uid integer references users(uid) on delete CASCADE, time text);'
+                          'CREATE TABLE IF NOT EXISTS building(uid integer references users(uid) on delete CASCADE, time text);'
+                          'CREATE TABLE IF NOT EXISTS karma(uid integer references users(uid) on delete CASCADE, time text, value integer);'
                           'CREATE TABLE IF NOT EXISTS user_stats(id integer primary key, '
-                          'uid integer references users.uid on delete CASCADE, time text,'
+                          'uid integer references users(uid) on delete CASCADE, time text,'
                           'hp integer, attack integer, armor integer, power integer, accuracy integer,'
                           'oratory integer, agility integer, stamina integer);'
                           'CREATE TABLE IF NOT EXISTS chats(name text UNIQUE ON CONFLICT IGNORE, chat_id integer, full_name text, type text);'
-                          'CREATE TABLE IF NOT EXISTS masters(uid integer references users.uid on delete CASCADE,'
-                          'name text references chats.name ON DELETE CASCADE);'
-                          'CREATE TABLE IF NOT EXISTS user_squads(uid integer references users.uid on delete CASCADE UNIQUE on conflict REPLACE,'
-                          'name text references chats.name ON DELETE CASCADE);'
-                          'CREATE TABLE IF NOT EXISTS user_settings(uid integer references users.uid on delete CASCADE UNIQUE on conflict REPLACE,'
+                          'CREATE TABLE IF NOT EXISTS masters(uid integer references users(uid) on delete CASCADE,'
+                          'name text references chats(name) ON DELETE CASCADE);'
+                          'CREATE TABLE IF NOT EXISTS user_squads(uid integer references users(uid) on delete CASCADE UNIQUE on conflict REPLACE,'
+                          'name text references chats(name) ON DELETE CASCADE);'
+                          'CREATE TABLE IF NOT EXISTS user_settings(uid integer references users(uid) on delete CASCADE UNIQUE on conflict REPLACE,'
                           'sex text, notifications int);'
-                          'CREATE TABLE IF NOT EXISTS user_keyboard(uid integer references users.uid on delete CASCADE UNIQUE on conflict REPLACE,'
+                          'CREATE TABLE IF NOT EXISTS user_keyboard(uid integer references users(uid) on delete CASCADE UNIQUE on conflict REPLACE,'
                           'state int);'
-                          'CREATE TABLE IF NOT EXISTS triggers(trigger text, chat text references chats.name ON DELETE CASCADE, text text); ')  # TODO also include raid specific tables after refactoring of pin
+                          'CREATE TABLE IF NOT EXISTS triggers(trigger text, chat text references chats(name) ON DELETE CASCADE, text text); ')  # TODO also include raid specific tables after refactoring of pin
         conn.commit()
         conn.close()
 
@@ -101,6 +101,7 @@ class SQLManager:
             pl.nic = nic
             self.get_player(pl, conn)
         conn.close()
+        return players
 
     def update_stats(self, pl: ww6StatBotPlayer.Player):
         st = pl.stats
