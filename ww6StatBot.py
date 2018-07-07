@@ -71,10 +71,11 @@ class Bot:
 
         keyboards = {'default': Player.KeyboardType.DEFAULT}
         for ktype in keyboards.keys():
+            print(c['keyboards'].keys())
             if ktype in c['keyboards'].keys():
                 k_list = c['keyboards'][ktype]
                 self.keyboards[keyboards[ktype]] = \
-                    telega.ReplyKeyboardMarkup([[telega.KeyboardButton(b) for b in b_list] for b_list in k_list])
+                    telega.ReplyKeyboardMarkup([[telega.KeyboardButton(b) for b in b_list] for b_list in k_list], resize_keyboard=True)
 
     def __init__(self):
         self.keyboards = {}
@@ -147,14 +148,12 @@ class Bot:
             pl.username = parse_result.username
             pl.nic = parse_result.profile.nic
             self.sql_manager.update_user(pl)
-        print(parse_result.timedelta)
         st = PlayerStat()
         st.copy_stats(pl.stats)
         pl.stats.copy_stats(parse_result.profile.stats)
         self.sql_manager.update_stats(pl)
         if st.time > pl.stats.time:
             pl.stats.copy_stats(st)
-        print(self.keyboards)
         self.message_manager.send_message(chat_id=uid, text='Я обновил твой профиль',
                                           reply_markup=self.keyboards[pl.keyboard])
 
@@ -179,7 +178,8 @@ class Bot:
         player = self.players.get(user.id)
 
         if message.text == '/stat':
-            self.message_manager.send_message(chat_id=chat_id, text=str(player), parse_mode ='HTML', disable_web_page_preview=True)
+            self.message_manager.send_message(chat_id=chat_id, text=str(player), parse_mode ='HTML',
+                                              disable_web_page_preview=True, reply_markup=self.keyboards[player.keyboard])
 
     # def __init__(self):
     #     self.configure()
