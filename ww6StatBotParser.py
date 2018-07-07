@@ -61,7 +61,7 @@ class Profile:
             self.hp_now, self.stamina_now, self.distance = hp_now, stamina_now, distance
             self.stats = PlayerStat()
             self.stats.hp, self.stats.stamina, self.stats.agility, self.stats.oratory, self.stats.accuracy, \
-            self.stats.power, self.stats.attack, self.stats.deff = hp, stamina, agility, oratory, accuracy, power, \
+            self.stats.power, self.stats.attack, self.stats.armor = hp, stamina, agility, oratory, accuracy, power, \
                                                                    attack, armor
 
 class ParseResult:
@@ -111,7 +111,7 @@ class Parser:
         match = self.re_profile.search(message.text) or self.re_profile_short.search(message.text)
         if match:
             pr.profile = Profile(match)
-            pr.profile.stats.time = message.forward_date
+            pr.profile.stats.time = str(message.forward_date)
 
 
     def _parse_raid(self, message: telega.Message, pr: ParseResult):

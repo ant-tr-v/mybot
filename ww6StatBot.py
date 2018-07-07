@@ -65,18 +65,16 @@ class Bot:
 
         f = open(self.DATA_PATH, "r", encoding='utf-8')
         if not f:
-            raise Exception('missed config file %s. check example at bot.yml.dist' % self.CONFIG_PATH)
+            print('missed config file %s. check example at bot.yml.dist' % self.CONFIG_PATH)
         t = f.read()
-        #print(t)
         c = json.loads(t)
 
         keyboards = {'default': Player.KeyboardType.DEFAULT}
         for ktype in keyboards.keys():
-            if ktype in c['keyboards']:
+            if ktype in c['keyboards'].keys():
                 k_list = c['keyboards'][ktype]
-                self.keyboards[keyboards[ktype]] = [[telega.KeyboardButton(b) for b in b_list] for b_list in k_list]
-
-
+                self.keyboards[keyboards[ktype]] = \
+                    telega.ReplyKeyboardMarkup([[telega.KeyboardButton(b) for b in b_list] for b_list in k_list])
 
     def __init__(self):
         self.keyboards = {}
@@ -95,13 +93,14 @@ class Bot:
         self.updater.dispatcher.add_handler(start_handler)
         self.updater.dispatcher.add_handler(massage_handler)
 
-        self.updater.start_polling()
+        self.updater.start_polling(clean=True)
+        print(self.players.keys()
+              )
         self.updater.idle()
 
     def handle_start(self, bot, update):
         message = update.message
         user = message.from_user
-        print(1)
         if message.chat.type != "private":
             return
         if user.id in self.blacklist:
@@ -114,35 +113,73 @@ class Bot:
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
 
-        print(2)
         self.players[user.id].keyboard = Player.KeyboardType.DEFAULT
         self.message_manager.send_message(chat_id=message.chat_id, text="Рад тебя видеть",
                                           reply_markup=self.keyboards[Player.KeyboardType.DEFAULT])
+
+    def handle_profile(self, uid, parse_result: parser.ParseResult):
+        pl = self.players.get(uid)
+        if not pl:
+            if parse_result.profile.fraction != '⚙️Убежище 6':
+                self.message_manager.send_message(chat_id=uid, text='Не ошибся ли ты фракционным ботом?')
+                return
+            if parse_result.timedelta > datetime.timedelta(minutes=2):
+                self.message_manager.send_message(chat_id=uid, text='Не покажешь профиль поновее?')
+                return
+            pl = Player()
+            pl.uid = uid
+            pl.username = parse_result.username
+            pl.nic = parse_result.profile.nic
+            self.players[uid] = pl
+            self.sql_manager.add_user(pl)
+        elif pl.nic != parse_result.profile.nic:
+            if parse_result.timedelta > datetime.timedelta(minutes=2):
+                text = "🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n" \
+                       "<i>Успей переслать его из игрового бота за 15 секунд</i>\n" \
+                       "Если ты сменил игровой ник и у тебя лапки обратись к @ant_ant или своему командиру\n " \
+                       "<code>А иначе не кидай мне чужой профиль!</code>"
+                self.message_manager.send_message(chat_id=pl.chatid, text=text, parse_mode='HTML')
+                return
+            pl.username = parse_result.username
+            pl.nic = parse_result.profile.nic
+            self.sql_manager.update_user(pl)
+        elif pl.username != parse_result.username:
+            pl.username = parse_result.username
+            pl.nic = parse_result.profile.nic
+            self.sql_manager.update_user(pl)
+        print(parse_result.timedelta)
+        st = PlayerStat()
+        st.copy_stats(pl.stats)
+        pl.stats.copy_stats(parse_result.profile.stats)
+        self.sql_manager.update_stats(pl)
+        if st.time > pl.stats.time:
+            pl.stats.copy_stats(st)
+        print(self.keyboards)
+        self.message_manager.send_message(chat_id=uid, text='Я обновил твой профиль',
+                                          reply_markup=self.keyboards[pl.keyboard])
 
     def handle_massage(self, bot, update: telega.Update):
         message = update.message
         chat_id = message.chat_id
         user = message.from_user
-        print(1)
 
         parse_result = self.parser.run(message)
-        print(2)
 
-        print(self.players)
         if user.id not in self.players.keys():
-            print(2.5)
-            if parse_result.profile:
-                self.message_manager.send_message(chat_id=chat_id, text='О! Провиль!')
+            if parse_result.profile and message.chat.type == 'private':
+                self.handle_profile(user.id, parse_result)
+                if user.id not in self.players.keys():
+                    return
+            else:
+                self.handle_start(bot, update)
+                return
+        elif parse_result.profile and message.chat.type == 'private':
+            self.handle_profile(user.id, parse_result)
 
-            print(2.6)
-            self.handle_start(bot, update)
-            return
+        player = self.players.get(user.id)
 
-        print(3)
-
-
-
-
+        if message.text == '/stat':
+            self.message_manager.send_message(chat_id=chat_id, text=str(player), parse_mode ='HTML', disable_web_page_preview=True)
 
     # def __init__(self):
     #     self.configure()

@@ -19,9 +19,8 @@ class PlayerStat:
         return self.hp + self.attack + self.agility + self.accuracy + self.oratory
 
     def copy_stats(self, ps):
-        self.time, self.hp, self.attack, self.armor, self.power, self.oratory, self.agility, self.accuracy, self.raids, \
-        self.stamina, self.building = ps.time, ps.hp, ps.attack, ps.armor, ps.power, ps.oratory, ps.agility, ps.accuracy, \
-                                     ps.raids, ps.stamina, ps.building
+        self.time, self.hp, self.attack, self.armor, self.power, self.oratory, self.agility, self.accuracy, \
+        self.stamina = ps.time, ps.hp, ps.attack, ps.armor, ps.power, ps.oratory, ps.agility, ps.accuracy, ps.stamina
 
 
 class PlayerSettings:
@@ -62,16 +61,16 @@ class Player(User):
         self.karma = 0
 
     def __str__(self):
-        return '<a href = t.me/{}>{}</a>{}\n<b>\nДата:</b>{}{}{}{}{}{}{}{}{}{}{}'\
+        return '<a href = "t.me/{}">{}</a>{}\n<b>\nДата:</b>{}{}{}{}{}{}{}{}{}{}{}'\
             .format(self.username, self.nic,
                     '\nОтряд:<b>{}</b>'.format(self.squad) if self.squad else '',self.stats.time,
-                    '<b>\nЗдоровье: </b>{}'.format(self.stats.hp) if self.stats.hp else '',
-                    '<b>\nУрон: </b>{}'.format(self.stats.attack) if self.stats.attack else '',
-                    '<b>\nБроня: </b>{}'.format(self.stats.armor) if self.stats.armor else '',
-                    '<b>\nСила: </b>{}'.format(self.stats.power) if self.stats.power else '',
-                    '<b>\nМеткость: </b>{}'.format(self.stats.accuracy) if self.stats.accuracy else '',
-                    '<b>\nХаризма: </b>{}'.format(self.stats.oratory) if self.stats.oratory else '',
-                    '<b>\nЛовкость: </b>{}'.format(self.stats.agility) if self.stats.agility else '',
+                    '<b>\nЗдоровье:    </b>{}'.format(self.stats.hp) if self.stats.hp else '',
+                    '<b>\nУрон:         </b>{}'.format(self.stats.attack) if self.stats.attack else '',
+                    '<b>\nБроня:       </b>{}'.format(self.stats.armor) if self.stats.armor else '',
+                    '<b>\nСила:         </b>{}'.format(self.stats.power) if self.stats.power else '',
+                    '<b>\nМеткость:   </b>{}'.format(self.stats.accuracy) if self.stats.accuracy else '',
+                    '<b>\nХаризма:    </b>{}'.format(self.stats.oratory) if self.stats.oratory else '',
+                    '<b>\nЛовкость:  </b>{}'.format(self.stats.agility) if self.stats.agility else '',
                     '<b>\n\nУспешные рейды: </b>{}'.format(self.raids) if self.raids else '',
-                    '<b>\nИсследования: </b>{}'.format(self.building) if self.stats.building else '',
+                    '<b>\nИсследования: </b>{}'.format(self.building) if self.building else '',
                     '<b>\nКарма: </b>{}'.format(self.karma) if self.karma else '')
