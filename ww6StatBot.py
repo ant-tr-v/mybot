@@ -3,25 +3,25 @@
 
 __version__ = "0.0.0"
 
-from telegram.ext import Updater
-from telegram.ext import Filters
-from telegram.ext import MessageHandler
-from telegram.ext import CommandHandler
-from telegram.ext import CallbackQueryHandler
-import telegram as telega
-import sqlite3 as sql
 import datetime
-import time
-import re
-import yaml
 import logging
+import re
+import sqlite3 as sql
 import sys
+import time
+import warnings
 from enum import Enum
-from ww6StatBotPin import PinOnlineKm
-from ww6StatBotUtils import MessageManager, Timer
-from ww6StatBotPlayer import Player, PlayerStat, PlayerSettings
-from ww6StatBotEvents import Notificator
+
+import telegram as telega
+import yaml
+from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
+                          MessageHandler, Updater)
+
 import ww6StatBotParser as parser
+from ww6StatBotEvents import Notificator
+from ww6StatBotPin import PinOnlineKm
+from ww6StatBotPlayer import Player, PlayerSettings, PlayerStat
+from ww6StatBotUtils import MessageManager, Timer
 
 
 class StatType(Enum):
@@ -37,6 +37,13 @@ class StatType(Enum):
 
 class Bot:
     CONFIG_PATH = 'bot.yml'
+
+    # Define dynamic config variables to avois pylint E1101 error
+    # ('Instance of Bot has no ... member')
+    db_path = ''
+    tg_token = ''
+    tg_bot_name = ''
+    ratelimit_report_chat_id = ''
 
     def __init__(self):
         self.configure()
@@ -537,12 +544,14 @@ class Bot:
             if (name in pl.nic.lower()) and (len(pl.nic) < 2 * l):
                 res.append((len(pl.nic), pl.nic, pl.username))
         if not res:
-            self.message_manager.send_message(chat_id=chat_id, text="Я таких не знаю\n¯\_(ツ)_/¯")
+            self.message_manager.send_message(chat_id=chat_id, text="Я таких не знаю\n¯\\_(ツ)_/¯")
             return
         res.sort()
         res = ['@{} - {}'.format(u[2], u[1]) for u in res]
-        self.message_manager.send_message(chat_id=chat_id, text=("Игроки с похожим ником:\n{1}".format(
-            name, '\n'.join(res))), parse_mode='HTML')
+        self.message_manager.send_message(
+            chat_id=chat_id,
+            text="Игроки с похожим ником:\n{}".format('\n'.join(res)),
+            parse_mode='HTML')
 
     def list_squads(self, chat_id, show_pin=False):
         text = ""
@@ -578,10 +587,16 @@ class Bot:
             self.message_manager.send_message(chat_id=call_back_chat, text="Меня заблокировали:\n%s"
                                                                            % "".join(['\n@' + val for val in block_list]))
 
-    def demand_squads(self, text, user, allow_empty=False):
+    def demand_squads(self, text: str, user: telega.User, allow_empty_squads=False, default_message: str=""):
+        '''
+        Splits telegram message text to squad list and message text
+        Checks user permissions
+        '''
         if len(text.split()) <= 1:
-            self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="сообщения-то и нехватает")
+            self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Сообщения-то и не хватает!")
             return None, None
+
+        # Find squad names in message text
         split = text.split()
         sqs = []
         start = -1
@@ -591,24 +606,54 @@ class Bot:
             else:
                 start = text.find(word)
                 break
+
+        # Is there any squads?
         if not sqs:
-            if not allow_empty:
+            if not allow_empty_squads:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
-                                                  text="Весело наверное писать в несуществующий отряд")
+                                                  text="Весело, наверное, писать в несуществующий отряд?")
+                return None, None
             return [], text[start:]
-        if user.id not in self.admins and user.id not in self.masters.keys() and not all(sq in self.masters[
-            user.id] for sq in sqs):
-            self.message_manager.send_message(chat_id=self.users[user.id].chatid,
-                                              text="Небеса не одарили тебя столь великой властью\nМожешь рискнуть обратиться за "
-                                                   "ней к Антону")
+
+        # Check permissions
+        denied = []
+        for sq in sqs:
+            if not self.user_has_squad_permission(user, sq):
+                denied.append(sq)
+        if denied:
+            if len(denied) == len(sqs):
+                message_text = ("Небеса не одарили тебя столь великой властью\n"
+                                "Можешь рискнуть обратиться за ней к Антону")
+            else:
+                message_text = "А ты точно командуешь в {}?".format(", ".join(denied))
+
+            self.message_manager.send_message(chat_id=self.users[user.id].chatid, text=message_text)
             return None, None
-        if not text[start:]:
+
+        if not text[start:] and not default_message:
             self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Но что же мне им написать?")
             return None, None
-        return sqs, text[start:]
+        return sqs, text[start:] or default_message
+
+    def user_has_squad_permission(self, user: telega.User, squad: str) -> bool:
+        '''
+        Checks if user is admin or master for given squad
+        '''
+        if user.id in self.admins:
+            return True
+        if user.id in self.masters.keys() and squad in self.masters[user.id]:
+            return True
+        return False
 
     def no_permission(self, user, sq):
-        return (user.id not in self.admins) and (user.id not in self.masters.keys() or sq not in self.masters[user.id])
+        '''
+        Checks if user has no rights to given squad
+        '''
+        warnings.warn(
+            "no_permission is deprecated, use user_has_squad_permission instead",
+            PendingDeprecationWarning
+        )
+        return not self.user_has_squad_permission(user, sq)
 
     def demand_ids(self, message: telega.Message, user, offset=1, all=False, allow_empty=False, limit=None):
         """не проверяет на права администратора
@@ -718,7 +763,7 @@ class Bot:
             return
         command, name, argument, modifier = parse.command.command, parse.command.name, parse.command.argument, \
                                             parse.command.modifier
-        # TODO : rewrite all comands using argument rather than text 
+        # TODO : rewrite all comands using argument rather than text
         if name == 'stat' and not argument and not message.reply_to_message:
             n = 5
             if modifier.isdigit():
@@ -732,7 +777,7 @@ class Bot:
                         self.message_manager.send_message(chat_id=chat_id, text="Доступны сохранения " + s)
                     return
             elif modifier:
-                self.message_manager.send_message.send_message(chat_id=user.id, text="Неверный формат команды")
+                self.message_manager.send_message(chat_id=user.id, text="Неверный формат команды")
                 return
             self.stat(user.id, chat_id, n)
         elif name == 'stat':
@@ -912,7 +957,7 @@ class Bot:
             else:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Нет такого /echo")
                 return
-            sqs, msg = self.demand_squads(text, user, allow_empty=True)
+            sqs, msg = self.demand_squads(text, user, allow_empty_squads=True)
             if sqs is None:
                 return
             if not sqs and user.id not in self.admins:
@@ -1153,31 +1198,31 @@ class Bot:
                 msg = "В отряде <b>" + self.squadnames[sq] + "</b>\n" + msg
             self.message_manager.send_split(msg, chat_id, 100)
         elif command == 'autoping':
-            m = re.match(r'^[\S]+([\s]+(?P<g>[\S]+))?', text)
-            if not m:
-                self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Неверный формат команды")
-                return
-            sq = m.group('g')
-            if sq is None:
-                self.message_manager.send_message(chat_id=chat_id, text="Нехватает отряда")
-                return
-            if self.no_permission(user, sq):
-                self.message_manager.send_message(chat_id=chat_id,
-                                                  text="Хмм... чего-то не хватает...\nА!  Точно! Твоих прав")
-                return
             if self.pinkm is None:
                 self.message_manager.send_message(chat_id=chat_id, text="Пина нету")
                 return
-            list_to_ping = []
-            self.message_manager.send_message(chat_id=self.squadids[sq], text="Пин видели? А он вас нет...")
-            for pl in self.users.values():
-                if pl.squad == sq and self.pinkm.player_status(pl) == PinOnlineKm.PlayerStatus.UNKNOWN:
-                    list_to_ping.append('@' + pl.username)
-                    if len(list_to_ping) == 3:
-                        self.message_manager.send_message(chat_id=self.squadids[sq], text=" ".join(list_to_ping))
-                        list_to_ping.clear()
-            if list_to_ping:
-                self.message_manager.send_message(chat_id=self.squadids[sq], text=" ".join(list_to_ping))
+            squad_list, message_text = self.demand_squads(text, user, allow_empty_squads=False, default_message="Пин видели? А он вас нет...")
+            if not squad_list:
+                return
+            for squad in squad_list:
+                squad_messages = []
+                list_to_ping = []
+                for user in self.users.values():
+                    if user.squad == squad and self.pinkm.player_status(user) == PinOnlineKm.PlayerStatus.UNKNOWN:
+                        list_to_ping.append('@' + user.username)
+                        if len(list_to_ping) == 3:
+                            squad_messages.append(" ".join(list_to_ping))
+                            list_to_ping.clear()
+                if list_to_ping:
+                    squad_messages.append(" ".join(list_to_ping))
+                if squad_messages:
+                    self.message_manager.send_message(chat_id=self.squadids[squad], text=message_text)
+                    for message in squad_messages:
+                        self.message_manager.send_message(chat_id=self.squadids[squad], text=message)
+                else:
+                    message = "Весь отряд {} уже отметился, круто!".format(squad)
+                    self.message_manager.send_message(chat_id=chat_id, text=message)
+
         elif command == 'info':
             _, ids = self.demand_ids(message, user, all=True, allow_empty=True)
             if not ids:
