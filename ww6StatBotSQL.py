@@ -110,6 +110,22 @@ class SQLManager:
         conn.close()
         return players
 
+    def get_blacklist(self):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        cur.execute('SELECT * from blacklist')
+        res = list(cur.fetchall())
+        conn.close()
+        return res
+
+    def get_admins(self):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        cur.execute('SELECT * from admins')
+        res = list(cur.fetchall())
+        conn.close()
+        return res
+
     def update_user(self, pl: ww6StatBotPlayer.Player):
         uid = pl.uid
         username = pl.username

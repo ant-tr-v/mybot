@@ -9,7 +9,6 @@ from telegram.ext import MessageHandler
 from telegram.ext import CommandHandler
 from telegram.ext import CallbackQueryHandler
 import telegram as telega
-import sqlite3 as sql
 import datetime
 import time
 import re
@@ -21,9 +20,11 @@ from enum import Enum
 from ww6StatBotPin import PinOnlineKm
 from ww6StatBotUtils import MessageManager, Timer
 from ww6StatBotPlayer import Player, PlayerStat, PlayerSettings
+from ww6StatBotChat import Squad
 from ww6StatBotEvents import Notificator
 from ww6StatBotSQL import SQLManager
-import ww6StatBotParser as parser
+import ww6StatBotParser as Parser
+from ww6StatBotData import DataBox
 
 
 class StatType(Enum):
@@ -41,7 +42,8 @@ class Bot:
     CONFIG_PATH = 'bot.yml'
     DATA_PATH = 'text.json'
 
-    def load_yaml(self):
+    def load(self):
+        # loading config
         f = open(self.CONFIG_PATH)
         if not f:
             raise Exception('missed config file %s. check example at bot.yml.dist' % self.CONFIG_PATH)
@@ -63,15 +65,15 @@ class Bot:
                         '%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH, opt, section))
                 setattr(self, '_'.join([section, opt]), cfg_opts[opt])
 
+        # loading keyboards
         f = open(self.DATA_PATH, "r", encoding='utf-8')
         if not f:
-            print('missed config file %s. check example at bot.yml.dist' % self.CONFIG_PATH)
+            raise Exception('missed data file %s.' % self.CONFIG_PATH)
         t = f.read()
         c = json.loads(t)
 
         keyboards = {'default': Player.KeyboardType.DEFAULT}
         for ktype in keyboards.keys():
-            print(c['keyboards'].keys())
             if ktype in c['keyboards'].keys():
                 k_list = c['keyboards'][ktype]
                 self.keyboards[keyboards[ktype]] = \
@@ -79,15 +81,15 @@ class Bot:
 
     def __init__(self):
         self.keyboards = {}
-        self.load_yaml()
+        self.load()
         self.sql_manager = SQLManager(self.db_path)
-        self.players = self.sql_manager.get_all_players()
-        self.blacklist = {}
+        self.data = DataBox(self.sql_manager)
+        self.commands = {'stat'}  # TODO may be we should check them automatically from methods' names or load from json
 
         self.timer = Timer()
         self.updater = Updater(token=self.tg_token)
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
-        self.parser = parser.Parser(self.message_manager, self.tg_bot_name)
+        self.parser = Parser.Parser(self.message_manager, self.tg_bot_name)
 
         massage_handler = MessageHandler(Filters.text | Filters.command, self.handle_massage)
         start_handler = CommandHandler('start', self.handle_start)
@@ -95,8 +97,7 @@ class Bot:
         self.updater.dispatcher.add_handler(massage_handler)
 
         self.updater.start_polling(clean=True)
-        print(self.players.keys()
-              )
+        print(self.data.all_player_usernames())
         self.updater.idle()
 
     def handle_start(self, bot, update):
@@ -104,42 +105,44 @@ class Bot:
         user = message.from_user
         if message.chat.type != "private":
             return
-        if user.id in self.blacklist:
+        if self.data.uid_in_blacklist(user.id):
             self.message_manager.send_message(chat_id=message.chat_id, text="Не особо рад тебя видеть.\nУходи",
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
-        elif user.id not in self.players.keys():
+        elif self.data.player(user.id):
             self.message_manager.send_message(chat_id=message.chat_id,
                                               text="Привет, давай знакомиться.\nКидай мне форвард своих статов",
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
 
-        self.players[user.id].keyboard = Player.KeyboardType.DEFAULT
+        self.data.player(user.id).keyboard = Player.KeyboardType.DEFAULT
         self.message_manager.send_message(chat_id=message.chat_id, text="Рад тебя видеть",
                                           reply_markup=self.keyboards[Player.KeyboardType.DEFAULT])
 
-    def handle_profile(self, uid, parse_result: parser.ParseResult):
-        pl = self.players.get(uid)
+    def handle_profile(self, uid, parse_result: Parser.ParseResult):
+        pl = self.data.player(uid)
+
+        # unknown user
         if not pl:
-            if parse_result.profile.fraction != '⚙️Убежище 6':
-                self.message_manager.send_message(chat_id=uid, text='Не ошибся ли ты фракционным ботом?')
+            if parse_result.message.chat.type == 'private':
+                if parse_result.profile.fraction != '⚙️Убежище 6':
+                    self.message_manager.send_message(chat_id=uid, text='Не ошибся ли ты фракционным ботом?')
+                    return
+                if parse_result.timedelta > datetime.timedelta(minutes=2):
+                    self.message_manager.send_message(chat_id=uid, text='Не покажешь профиль поновее?')
+                    return
+            else:
                 return
-            if parse_result.timedelta > datetime.timedelta(minutes=2):
-                self.message_manager.send_message(chat_id=uid, text='Не покажешь профиль поновее?')
-                return
-            pl = Player()
-            pl.uid = uid
-            pl.username = parse_result.username
-            pl.nic = parse_result.profile.nic
-            self.players[uid] = pl
-            self.sql_manager.add_user(pl)
+
+        # known user with nen nic
         elif pl.nic != parse_result.profile.nic:
             if parse_result.timedelta > datetime.timedelta(minutes=2):
                 text = "🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n" \
                        "<i>Успей переслать его из игрового бота за 15 секунд</i>\n" \
                        "Если ты сменил игровой ник и у тебя лапки обратись к @ant_ant или своему командиру\n " \
                        "<code>А иначе не кидай мне чужой профиль!</code>"
-                self.message_manager.send_message(chat_id=pl.chatid, text=text, parse_mode='HTML')
+                if parse_result.message.chat.type == 'private':
+                    self.message_manager.send_message(chat_id=uid, text=text, parse_mode='HTML')
                 return
             pl.username = parse_result.username
             pl.nic = parse_result.profile.nic
@@ -148,6 +151,7 @@ class Bot:
             pl.username = parse_result.username
             pl.nic = parse_result.profile.nic
             self.sql_manager.update_user(pl)
+
         st = PlayerStat()
         st.copy_stats(pl.stats)
         pl.stats.copy_stats(parse_result.profile.stats)
@@ -157,6 +161,50 @@ class Bot:
         self.message_manager.send_message(chat_id=uid, text='Я обновил твой профиль',
                                           reply_markup=self.keyboards[pl.keyboard])
 
+    def _stat(self, player: Player, parse_result: Parser.ParseResult):
+        chat_id = parse_result.message.chat_id
+        # parsing usernames
+        pl_set, unknown = self.data.players_by_username(parse_result.command.argument) # TODO: consider defining method for following 6 lines
+        # no usernames but message is reply
+        if not pl_set and not unknown and parse_result.message.reply_to_message:
+            pl = self.data.player(parse_result.message.reply_to_message.from_user.id)
+            if not pl:
+                pl_set, unknown = set(), {'@' + parse_result.message.reply_to_message.from_user.username}
+            else:
+                pl_set ,unknown = {pl}, set()
+
+        # no usernames but message at all
+        if not pl_set and not unknown:
+            pl_set = {player}
+            unknown = set()
+
+        for pl in pl_set:
+            if self.data.player_has_rigts(player, pl.squad) or player==pl:
+                self.message_manager.send_message(chat_id=chat_id, text=str(player), parse_mode='HTML',
+                                          disable_web_page_preview=True, reply_markup=self.keyboards[player.keyboard])
+            else:
+                text = "У тебя нет такой власти!\nСтатистика @{} тебе не доступна".format(pl.username)
+                self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
+                                                  disable_web_page_preview=True,
+                                                  reply_markup=self.keyboards[player.keyboard])
+        if self.tg_bot_name in unknown:
+            self.message_manager.send_message(chat_id=chat_id, text='Я бот\nМне нельзя играть в WW')
+            unknown.remove(self.tg_bot_name)
+        if unknown:
+            self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с '+ ', '.join(unknown))
+
+    def handle_command(self, player: Player, parse_result: Parser.ParseResult):
+        if not parse_result.command:
+            return
+        com = parse_result.command.name
+        if com in self.commands:
+            getattr(self, '_'+com)(player, parse_result)
+        elif parse_result.message.chat.type == 'private':
+            self.message_manager.send_message(chat_id=player.uid, text='Неизвестная команда🤔\nСам придумал?')
+
+
+
+
     def handle_massage(self, bot, update: telega.Update):
         message = update.message
         chat_id = message.chat_id
@@ -164,10 +212,10 @@ class Bot:
 
         parse_result = self.parser.run(message)
 
-        if user.id not in self.players.keys():
-            if parse_result.profile and message.chat.type == 'private':
+        if not self.data.player(user.id):
+            if parse_result.profile:
                 self.handle_profile(user.id, parse_result)
-                if user.id not in self.players.keys():
+                if not self.data.player(user.id):
                     return
             else:
                 self.handle_start(bot, update)
@@ -175,11 +223,10 @@ class Bot:
         elif parse_result.profile and message.chat.type == 'private':
             self.handle_profile(user.id, parse_result)
 
-        player = self.players.get(user.id)
+        player = self.data.player(user.id)
 
-        if message.text == '/stat':
-            self.message_manager.send_message(chat_id=chat_id, text=str(player), parse_mode ='HTML',
-                                              disable_web_page_preview=True, reply_markup=self.keyboards[player.keyboard])
+        if parse_result.command:
+            self.handle_command(player, parse_result)
 
     # def __init__(self):
     #     self.configure()

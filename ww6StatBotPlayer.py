@@ -24,7 +24,6 @@ class PlayerStat:
 
 
 class PlayerSettings:
-
     notification_time = ("23:00", "0:00", "1:05", "7:00", "8:00", "9:05", "15:00", "16:00", "17:05")
 
     def __init__(self):
@@ -60,10 +59,22 @@ class Player(User):
         self.building = 0
         self.karma = 0
 
+    def __int__(self):
+        return self.uid
+
+    def __hash__(self):
+        return self.uid
+
+    def __lt__(self, other):
+        return self.uid < int(other)
+
+    def __eq__(self, other):
+        return self.uid == int(other)
+
     def __str__(self):
-        return '<a href = "t.me/{}">{}</a>{}\n<b>\nДата:</b>{}{}{}{}{}{}{}{}{}{}{}'\
+        return '<a href = "t.me/{}">{}</a>{}\n<b>\nДата:</b>{}{}{}{}{}{}{}{}{}{}{}' \
             .format(self.username, self.nic,
-                    '\nОтряд:<b>{}</b>'.format(self.squad) if self.squad else '',self.stats.time,
+                    '\nОтряд:<b>{}</b>'.format(self.squad) if self.squad else '', self.stats.time,
                     '<b>\nЗдоровье:    </b>{}'.format(self.stats.hp) if self.stats.hp else '',
                     '<b>\nУрон:         </b>{}'.format(self.stats.attack) if self.stats.attack else '',
                     '<b>\nБроня:       </b>{}'.format(self.stats.armor) if self.stats.armor else '',
@@ -74,3 +85,18 @@ class Player(User):
                     '<b>\n\nУспешные рейды: </b>{}'.format(self.raids) if self.raids else '',
                     '<b>\nИсследования: </b>{}'.format(self.building) if self.building else '',
                     '<b>\nКарма: </b>{}'.format(self.karma) if self.karma else '')
+
+    def __repr__(self):
+        return '{} Date:</b>{}{}{}{}{}{}{}{}{}{}{}' \
+            .format(self.username, self.nic,
+                    'Squad: {}'.format(self.squad), self.stats.time,
+                    ' Hp: {}'.format(self.stats.hp),
+                    ' Attack: {}'.format(self.stats.attack),
+                    ' Armor: {}'.format(self.stats.armor),
+                    ' Power: {}'.format(self.stats.power),
+                    ' Accuracy: {}'.format(self.stats.accuracy),
+                    ' Oratory: {}'.format(self.stats.oratory),
+                    ' Agility: {}'.format(self.stats.agility),
+                    ' Raids: {}'.format(self.raids),
+                    ' Building: {}'.format(self.building),
+                    ' Karma: {}'.format(self.karma))

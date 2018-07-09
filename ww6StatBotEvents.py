@@ -4,6 +4,7 @@ import threading
 import telegram as telega
 from ww6StatBotPlayer import PlayerSettings, Player
 
+
 class Notificator:
     def __init__(self, players :dict, bot:telega.Bot):
         """we assume that settings.notif_time is equal for all players and players is not empty"""

@@ -11,13 +11,16 @@ class Command:
         self.command = None
         self.name = None
         self.argument = None
+        self.modifiers = []
         self.modifier = None
         if match:
             try:
                 self.command = match.group('command') or ""
                 self.name = match.group('name') or ""
                 self.argument = match.group('argument') or ""
-                self.modifier = match.group('modifier') or ""
+                modifier = match.group('modifier') or ""
+                self.modifiers = modifier.split('_')
+                self.modifier = self.modifiers[0] if self.modifiers else None
             except:
                 pass
 
@@ -56,13 +59,15 @@ class Profile:
             self.nic, self.fraction, self.location = match.group('nic', 'fraction', 'location')
             self.nic = self.nic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             hp, hp_now, hunger, attack, armor, power, accuracy, oratory, agility, stamina, stamina_now, distance = \
-                [int(x) for x in match.group('hp', 'hp_now', 'hunger', 'attack', 'armor', 'power', 'accuracy', 'oratory',
-                                             'agility', 'stamina', 'stamina_now', 'distance')]
+                [int(x) for x in
+                 match.group('hp', 'hp_now', 'hunger', 'attack', 'armor', 'power', 'accuracy', 'oratory',
+                             'agility', 'stamina', 'stamina_now', 'distance')]
             self.hp_now, self.stamina_now, self.distance = hp_now, stamina_now, distance
             self.stats = PlayerStat()
             self.stats.hp, self.stats.stamina, self.stats.agility, self.stats.oratory, self.stats.accuracy, \
             self.stats.power, self.stats.attack, self.stats.armor = hp, stamina, agility, oratory, accuracy, power, \
-                                                                   attack, armor
+                                                                    attack, armor
+
 
 class ParseResult:
     def __init__(self):
@@ -112,7 +117,6 @@ class Parser:
         if match:
             pr.profile = Profile(match)
             pr.profile.stats.time = str(message.forward_date)
-
 
     def _parse_raid(self, message: telega.Message, pr: ParseResult):
         text = message.text
