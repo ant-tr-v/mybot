@@ -164,7 +164,7 @@ class Bot:
     def _stat(self, player: Player, parse_result: Parser.ParseResult):
         chat_id = parse_result.message.chat_id
         # parsing usernames
-        pl_set, unknown = self.data.players_by_username(parse_result.command.argument) # TODO: consider defining method for following 6 lines
+        pl_set, unknown = self.data.players_by_username(parse_result.command.argument)  # TODO: consider defining method for following 6 lines
         # no usernames but message is reply
         if not pl_set and not unknown and parse_result.message.reply_to_message:
             pl = self.data.player(parse_result.message.reply_to_message.from_user.id)
@@ -179,7 +179,7 @@ class Bot:
             unknown = set()
 
         for pl in pl_set:
-            if self.data.player_has_rigts(player, pl.squad) or player==pl:
+            if self.data.player_has_rights(player, pl.squad) or player==pl:
                 self.message_manager.send_message(chat_id=chat_id, text=str(player), parse_mode='HTML',
                                           disable_web_page_preview=True, reply_markup=self.keyboards[player.keyboard])
             else:
@@ -201,9 +201,6 @@ class Bot:
             getattr(self, '_'+com)(player, parse_result)
         elif parse_result.message.chat.type == 'private':
             self.message_manager.send_message(chat_id=player.uid, text='Неизвестная команда🤔\nСам придумал?')
-
-
-
 
     def handle_massage(self, bot, update: telega.Update):
         message = update.message

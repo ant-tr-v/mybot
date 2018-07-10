@@ -11,6 +11,35 @@ class DataBox:
         self._players_by_username = {pl.username: pl for pl in self._players.values()}  # Players
         self._blacklist = set(self.sql_manager.get_blacklist())  # user ids
         self._admins = (self.sql_manager.get_admins())  # user ids
+        self._chats = {}  # Chat
+        self._squads = {}  # Squad
+        self._names = {'none', 'all'}
+
+        chats_and_types = self.sql_manager.get_all_chats()
+        masters = self.sql_manager.get_all_masters_uids()
+        members = self.sql_manager.get_all_chat_members_uids()
+        for chat, chat_type in chats_and_types:
+            if chat_type == 'squad':
+                sq = Chat.Squad()
+                sq.name, sq.chat_id, sq.title = chat.name, chat.chat_id, chat.title
+                mem = members.get(chat.name)
+                if mem():
+                    for uid in mem:
+                        sq.members.add(self._players.get(uid))
+                mas = masters.get(chat.name)
+                if mas:
+                    for uid in mas:
+                        sq.masters.add(self._players.get(uid))
+                self._squads[sq.name] = sq
+            else:
+                cht = Chat.Chat()
+                cht.name, cht.chat_id, cht.title = chat.name, chat.chat_id, chat.title
+                mem = members.get(chat.name)
+                if mem():
+                    for uid in mem:
+                        cht.members.add(self._players.get(uid))
+                self._chats[cht.name] = cht
+            self._names.add(chat.name)
 
     def add_player(self, uid, username, nic):
         pl = Player()
@@ -42,8 +71,8 @@ class DataBox:
     def player_is_admin(self, player: Player) -> bool:
         return player.uid in self._admins
 
-    def player_has_rigts(self, player: Player, squad: Chat.Squad) -> bool:  # TODO: update after Squad class
-        return self.player_is_admin(player)
+    def player_has_rights(self, player: Player, squad: Chat.Squad) -> bool:
+        return self.player_is_admin(player) or player in squad.masters
 
     def players_by_username(self, _str: str, offset=0, parse_all=True):
         """

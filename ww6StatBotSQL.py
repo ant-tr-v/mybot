@@ -1,5 +1,6 @@
 import sqlite3 as sql
 import ww6StatBotPlayer
+import ww6StatBotChat as Chat
 
 
 class SQLManager:
@@ -15,13 +16,13 @@ class SQLManager:
             'CREATE TABLE IF NOT EXISTS building(uid integer references users(uid) on delete CASCADE, time text);'
             'CREATE TABLE IF NOT EXISTS karma(uid integer references users(uid) on delete CASCADE, time text, value integer);'
             'CREATE TABLE IF NOT EXISTS user_stats(id integer primary key, '
-            'uid integer references users(uid) on delete CASCADE, time text,'
+            'uid integer references users(uid) on delete CASCADE, time text UNIQUE on conflict REPLACE,'
             'hp integer, attack integer, armor integer, power integer, accuracy integer,'
             'oratory integer, agility integer, stamina integer);'
             'CREATE TABLE IF NOT EXISTS chats(name text UNIQUE ON CONFLICT IGNORE, chat_id integer, full_name text, type text);'
             'CREATE TABLE IF NOT EXISTS masters(uid integer references users(uid) on delete CASCADE,'
             'name text references chats(name) ON DELETE CASCADE);'
-            'CREATE TABLE IF NOT EXISTS user_squads(uid integer references users(uid) on delete CASCADE UNIQUE on conflict REPLACE,'
+            'CREATE TABLE IF NOT EXISTS chat_members(uid integer references users(uid) on delete CASCADE,'
             'name text references chats(name) ON DELETE CASCADE);'
             'CREATE TABLE IF NOT EXISTS user_settings(uid integer references users(uid) on delete CASCADE UNIQUE on conflict REPLACE,'
             'sex text, notifications int);'
@@ -109,6 +110,45 @@ class SQLManager:
             self.get_player(pl, conn)
         conn.close()
         return players
+
+    def get_all_chats(self):
+        conn = sql.connect(self.database)
+        result = []
+        cur = conn.cursor()
+        cur.execute('SELECT * from chats')
+        for r in cur.fetchall():
+            name, chat_id, full_name, chat_type = r
+            chat = Chat.Chat()
+            chat.name, chat.chat_id, chat.title = name, chat_id, full_name
+            result.append((chat, chat_type))
+        conn.close()
+        return result
+
+    def get_all_masters_uids(self):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        result = {}
+        cur.execute('SELECT * from masters')
+        for r in cur.fetchall():
+            uid, name = r
+            if name not in result.keys():
+                result[name] = set()
+            result[name].add(uid)
+        conn.close()
+        return result
+
+    def get_all_chat_members_uids(self):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        result = {}
+        cur.execute('SELECT * from chat_members')
+        for r in cur.fetchall():
+            uid, name = r
+            if name not in result.keys():
+                result[name] = set()
+            result[name].add(uid)
+        conn.close()
+        return result
 
     def get_blacklist(self):
         conn = sql.connect(self.database)
