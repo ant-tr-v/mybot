@@ -3,28 +3,27 @@
 
 __version__ = "0.0.0"
 
-from telegram.ext import Updater
-from telegram.ext import Filters
-from telegram.ext import MessageHandler
-from telegram.ext import CommandHandler
-from telegram.ext import CallbackQueryHandler
-import telegram as telega
 import datetime
-import time
-import re
-import yaml
 import json
 import logging
+import re
 import sys
+import time
 from enum import Enum
-from ww6StatBotPin import PinOnlineKm
-from ww6StatBotUtils import MessageManager, Timer
-from ww6StatBotPlayer import Player, PlayerStat, PlayerSettings
-from ww6StatBotChat import Squad
-from ww6StatBotEvents import Notificator
-from ww6StatBotSQL import SQLManager
+
+import telegram as telega
+import yaml
+from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
+                          MessageHandler, Updater)
+
 import ww6StatBotParser as Parser
+from ww6StatBotChat import Squad
 from ww6StatBotData import DataBox
+from ww6StatBotEvents import Notificator
+from ww6StatBotPin import PinOnlineKm
+from ww6StatBotPlayer import Player, PlayerSettings, PlayerStat
+from ww6StatBotSQL import SQLManager
+from ww6StatBotUtils import MessageManager, Timer
 
 
 class StatType(Enum):
@@ -41,6 +40,13 @@ class StatType(Enum):
 class Bot:
     CONFIG_PATH = 'bot.yml'
     DATA_PATH = 'text.json'
+
+    # Define dynamic config variables to avoid pylint E1101 error
+    # ('Instance of Bot has no ... member')
+    db_path = ''
+    tg_token = ''
+    tg_bot_name = ''
+    ratelimit_report_chat_id = ''
 
     def load(self):
         # loading config
