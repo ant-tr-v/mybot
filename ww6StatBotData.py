@@ -41,7 +41,7 @@ class DataBox:
                 self._chats[cht.name] = cht
             self._names.add(chat.name)
 
-    def add_player(self, uid, username, nic):
+    def add_player(self, uid, username, nic) -> Player:
         pl = Player()
         pl.uid = uid
         pl.username = username
@@ -49,6 +49,7 @@ class DataBox:
         self._players[uid] = pl
         self._players_by_username[username.lower()] = pl
         self.sql_manager.add_user(pl)
+        return pl
 
     def player(self, uid):
         return self._players.get(uid)

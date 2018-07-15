@@ -159,6 +159,8 @@ class Bot:
                 if parse_result.timedelta > datetime.timedelta(minutes=2):
                     self.message_manager.send_message(chat_id=uid, text='Не покажешь профиль поновее?')
                     return
+                # Everything looks fine. Adding player
+                pl = self.data.add_player(uid, parse_result.username, parse_result.profile.nic)
             else:
                 return
 
