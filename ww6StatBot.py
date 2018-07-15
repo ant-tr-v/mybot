@@ -130,10 +130,17 @@ class Bot:
             self.message_manager.send_message(chat_id=message.chat_id, text="Не особо рад тебя видеть.\nУходи",
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
-        elif self.data.player(user.id):
+        elif not self.data.player(user.id):
+            message_text = (
+                "Привет, давай знакомиться!\n"
+                "Перейди в игру, открой 📟 Пип-бой, "
+                "нажми команду <code>/me</code> внизу и перешли мне сообщение с полным профилем"
+            )
+            markup = telega.InlineKeyboardMarkup([[telega.InlineKeyboardButton(text="Перейти в игру", url="https://t.me/WastelandWarsBot")]])
             self.message_manager.send_message(chat_id=message.chat_id,
-                                              text="Привет, давай знакомиться.\nКидай мне форвард своих статов",
-                                              reply_markup=telega.ReplyKeyboardRemove())
+                                              parse_mode='HTML',
+                                              text=message_text,
+                                              reply_markup=markup)
             return
 
         self.data.player(user.id).keyboard = Player.KeyboardType.DEFAULT
@@ -1940,6 +1947,6 @@ def set_stderr_debug_logger():
 
 
 if __name__ == "__main__":
-    # set_stderr_debug_logger()
+    set_stderr_debug_logger()
 
     stat_bot = Bot()
