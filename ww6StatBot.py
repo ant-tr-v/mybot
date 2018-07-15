@@ -1949,6 +1949,6 @@ def set_stderr_debug_logger():
 
 
 if __name__ == "__main__":
-    set_stderr_debug_logger()
+    # set_stderr_debug_logger()
 
     stat_bot = Bot()
