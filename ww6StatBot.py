@@ -3,28 +3,27 @@
 
 __version__ = "0.0.0"
 
-from telegram.ext import Updater
-from telegram.ext import Filters
-from telegram.ext import MessageHandler
-from telegram.ext import CommandHandler
-from telegram.ext import CallbackQueryHandler
-import telegram as telega
 import datetime
-import time
-import re
-import yaml
 import json
 import logging
+import re
 import sys
+import time
 from enum import Enum
-from ww6StatBotPin import PinOnlineKm
-from ww6StatBotUtils import MessageManager, Timer
-from ww6StatBotPlayer import Player, PlayerStat, PlayerSettings
-from ww6StatBotChat import Squad
-from ww6StatBotEvents import Notificator
-from ww6StatBotSQL import SQLManager
+
+import telegram as telega
+import yaml
+from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
+                          MessageHandler, Updater)
+
 import ww6StatBotParser as Parser
+from ww6StatBotChat import Squad
 from ww6StatBotData import DataBox
+from ww6StatBotEvents import Notificator
+from ww6StatBotPin import PinOnlineKm
+from ww6StatBotPlayer import Player, PlayerSettings, PlayerStat
+from ww6StatBotSQL import SQLManager
+from ww6StatBotUtils import MessageManager, Timer
 
 
 class StatType(Enum):
@@ -41,6 +40,13 @@ class StatType(Enum):
 class Bot:
     CONFIG_PATH = 'bot.yml'
     DATA_PATH = 'text.json'
+
+    # Define dynamic config variables to avoid pylint E1101 error
+    # ('Instance of Bot has no ... member')
+    db_path = ''
+    tg_token = ''
+    tg_bot_name = ''
+    ratelimit_report_chat_id = ''
 
     def load(self):
         # loading config
@@ -65,6 +71,20 @@ class Bot:
                         '%s: missed mandatory option %s in the section %s' % (self.CONFIG_PATH, opt, section))
                 setattr(self, '_'.join([section, opt]), cfg_opts[opt])
 
+        self.tg_use_proxy = False
+        self.tg_request_kwargs = {}
+        if 'proxy' in c:
+            proxy_config = c['proxy']
+
+            self.tg_use_proxy = True
+            self.tg_request_kwargs = {
+                'proxy_url': proxy_config['url'],
+                'urllib3_proxy_kwargs': {
+                    'username': proxy_config['username'],
+                    'password': proxy_config['password']
+                }
+            }
+
         # loading keyboards
         f = open(self.DATA_PATH, "r", encoding='utf-8')
         if not f:
@@ -87,7 +107,8 @@ class Bot:
         self.commands = {'stat'}  # TODO may be we should check them automatically from methods' names or load from json
 
         self.timer = Timer()
-        self.updater = Updater(token=self.tg_token)
+        self.updater = Updater(
+            token=self.tg_token, request_kwargs=self.tg_request_kwargs)
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
         self.parser = Parser.Parser(self.message_manager, self.tg_bot_name)
 
@@ -109,10 +130,17 @@ class Bot:
             self.message_manager.send_message(chat_id=message.chat_id, text="Не особо рад тебя видеть.\nУходи",
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
-        elif self.data.player(user.id):
+        elif not self.data.player(user.id):
+            message_text = (
+                "Привет, давай знакомиться!\n"
+                "Перейди в игру, открой 📟 Пип-бой, "
+                "нажми команду <code>/me</code> внизу и перешли мне сообщение с полным профилем"
+            )
+            markup = telega.InlineKeyboardMarkup([[telega.InlineKeyboardButton(text="Перейти в игру", url="https://t.me/WastelandWarsBot")]])
             self.message_manager.send_message(chat_id=message.chat_id,
-                                              text="Привет, давай знакомиться.\nКидай мне форвард своих статов",
-                                              reply_markup=telega.ReplyKeyboardRemove())
+                                              parse_mode='HTML',
+                                              text=message_text,
+                                              reply_markup=markup)
             return
 
         self.data.player(user.id).keyboard = Player.KeyboardType.DEFAULT
@@ -131,6 +159,8 @@ class Bot:
                 if parse_result.timedelta > datetime.timedelta(minutes=2):
                     self.message_manager.send_message(chat_id=uid, text='Не покажешь профиль поновее?')
                     return
+                # Everything looks fine. Adding player
+                pl = self.data.add_player(uid, parse_result.username, parse_result.profile.nic)
             else:
                 return
 
