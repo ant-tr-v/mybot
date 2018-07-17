@@ -6,22 +6,19 @@ __version__ = "0.0.0"
 import datetime
 import json
 import logging
-import re
 import sys
-import time
 from enum import Enum
 
 import telegram as telega
 import yaml
-from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
-                          MessageHandler, Updater)
+from telegram.ext import CommandHandler
+from telegram.ext import Filters
+from telegram.ext import MessageHandler
+from telegram.ext import Updater
 
 import ww6StatBotParser as Parser
-from ww6StatBotChat import Squad
 from ww6StatBotData import DataBox
-from ww6StatBotEvents import Notificator
-from ww6StatBotPin import PinOnlineKm
-from ww6StatBotPlayer import Player, PlayerSettings, PlayerStat
+from ww6StatBotPlayer import Player, PlayerStat
 from ww6StatBotSQL import SQLManager
 from ww6StatBotUtils import MessageManager, Timer
 
@@ -100,11 +97,13 @@ class Bot:
                     telega.ReplyKeyboardMarkup([[telega.KeyboardButton(b) for b in b_list] for b_list in k_list], resize_keyboard=True)
 
     def __init__(self):
+        self.tg_use_proxy = False
+        self.tg_request_kwargs = {}
         self.keyboards = {}
         self.load()
         self.sql_manager = SQLManager(self.db_path)
         self.data = DataBox(self.sql_manager)
-        self.commands = {'stat'}  # TODO may be we should check them automatically from methods' names or load from json
+        self.commands = {'stat', 'remove'}  # TODO may be we should check them automatically from methods' names or load from json
 
         self.timer = Timer()
         self.updater = Updater(
@@ -161,10 +160,11 @@ class Bot:
                     return
                 # Everything looks fine. Adding player
                 pl = self.data.add_player(uid, parse_result.username, parse_result.profile.nic)
+                self.message_manager.send_message(chat_id=uid, text='Теперь мы знакомы\nПриятной игры😉')
             else:
                 return
 
-        # known user with nen nic
+        # known user with neц nic
         elif pl.nic != parse_result.profile.nic:
             if parse_result.timedelta > datetime.timedelta(minutes=2):
                 text = "🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n" \
@@ -186,7 +186,7 @@ class Bot:
         st.copy_stats(pl.stats)
         pl.stats.copy_stats(parse_result.profile.stats)
         self.sql_manager.update_stats(pl)
-        if st.time > pl.stats.time:
+        if st.time > pl.stats.time and st.hp != 0:  # older and not first
             pl.stats.copy_stats(st)
         self.message_manager.send_message(chat_id=uid, text='Я обновил твой профиль',
                                           reply_markup=self.keyboards[pl.keyboard])
@@ -210,7 +210,7 @@ class Bot:
 
         for pl in pl_set:
             if self.data.player_has_rights(player, pl.squad) or player==pl:
-                self.message_manager.send_message(chat_id=chat_id, text=str(player), parse_mode='HTML',
+                self.message_manager.send_message(chat_id=chat_id, text=str(pl), parse_mode='HTML',
                                           disable_web_page_preview=True, reply_markup=self.keyboards[player.keyboard])
             else:
                 text = "У тебя нет такой власти!\nСтатистика @{} тебе не доступна".format(pl.username)
@@ -222,6 +222,37 @@ class Bot:
             unknown.remove(self.tg_bot_name)
         if unknown:
             self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с '+ ', '.join(unknown))
+
+    def _remove(self, player: Player, parse_result: Parser.ParseResult):
+        chat_id = parse_result.message.chat_id
+        if not self.data.player_is_admin(player):
+            text = "На это ты не способен.\nЛишь админы могут это"
+            self.message_manager.send_message(chat_id=chat_id, text=text)
+            return
+
+        pl_set, unknown = self.data.players_by_username(
+            parse_result.command.argument)  # TODO: consider defining method for following 6 lines
+        # no usernames but message is reply
+        if not pl_set and not unknown and parse_result.message.reply_to_message:
+            pl = self.data.player(parse_result.message.reply_to_message.from_user.id)
+            if not pl:
+                pl_set, unknown = set(), {'@' + parse_result.message.reply_to_message.from_user.username}
+            else:
+                pl_set, unknown = {pl}, set()
+
+        if not pl_set and not unknown:
+            self.message_manager.send_message(chat_id=player.uid, text='А кого удалять-то?')
+            return
+
+        for pl in pl_set:
+            self.data.del_player(pl)
+        if self.tg_bot_name in unknown:
+            self.message_manager.send_message(chat_id=chat_id, text='Нет!\nСебя я не удалю😏')
+            unknown.remove(self.tg_bot_name)
+        if pl_set:
+            self.message_manager.send_message(chat_id=chat_id, text='Я удалил @' + ', @'.join([pl.username for pl in pl_set]))
+        if unknown:
+            self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с ' + ', '.join(unknown))
 
     def handle_command(self, player: Player, parse_result: Parser.ParseResult):
         if not parse_result.command:

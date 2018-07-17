@@ -1,6 +1,7 @@
 import sqlite3 as sql
-import ww6StatBotPlayer
+
 import ww6StatBotChat as Chat
+import ww6StatBotPlayer
 
 
 class SQLManager:
@@ -31,12 +32,6 @@ class SQLManager:
             'CREATE TABLE IF NOT EXISTS triggers(trigger text, chat text references chats(name) ON DELETE CASCADE, text text); ')  # TODO also include raid specific tables after refactoring of pin
         conn.commit()
         conn.close()
-
-    @staticmethod
-    def _get_squad(cur: sql.Cursor, uid):
-        cur.execute('select name from user_squads where uid = ?', (uid,))
-        r = cur.fetchone()
-        return r[0] if r else None
 
     @staticmethod
     def _get_keyboard(cur: sql.Cursor, uid):
@@ -85,7 +80,6 @@ class SQLManager:
             cur.execute('select * from users where uid = ?', (uid,))
             r = cur.fetchone()
             pl.uid, pl.username, pl.nic = r
-        pl.squad = self._get_squad(cur, uid)
         pl.keyboard = ww6StatBotPlayer.Player.KeyboardType(self._get_keyboard(cur, uid))
         pl.raids = self._get_raids(cur, uid)
         pl.building = self._get_raids(cur, uid)
@@ -120,7 +114,7 @@ class SQLManager:
             name, chat_id, full_name, chat_type = r
             chat = Chat.Chat()
             chat.name, chat.chat_id, chat.title = name, chat_id, full_name
-            result.append((chat, chat_type))
+            chat.chat_type = Chat.from_str[chat_type]
         conn.close()
         return result
 
@@ -162,7 +156,7 @@ class SQLManager:
         conn = sql.connect(self.database)
         cur = conn.cursor()
         cur.execute('SELECT * from admins')
-        res = list(cur.fetchall())
+        res = [r[0] for r in cur.fetchall()]
         conn.close()
         return res
 
@@ -185,6 +179,82 @@ class SQLManager:
         cur.execute('INSERT into users(uid, username, nic) values(?, ?, ?)', (uid, username, nic))
         conn.commit()
         conn.close()
+
+    def del_user(self, pl: ww6StatBotPlayer.Player):
+        uid = pl.uid
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        cur.execute('DELETE from users where uid = ?', (uid,))
+        conn.commit()
+        conn.close()
+
+    def add_master(self, pl: ww6StatBotPlayer.Player, ch: Chat.Chat):
+        uid = pl.uid
+        name = ch.name
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('INSERT into masters(uid, name) values(?, ?)', (uid, name))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " +e.args[0])
+        conn.commit()
+        conn.close()
+
+    def del_master(self, pl: ww6StatBotPlayer.Player, ch: Chat.Chat):
+        uid = pl.uid
+        name = ch.name
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('DELETE from masters where uid = ? and name = ?', (uid, name))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " +e.args[0])
+        conn.commit()
+        conn.close()
+
+    def add_chat(self, ch: Chat.Chat):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('INSERT into chats(name, chat_id, full_name, type) values(?, ?, ?, ?)',
+                        (ch.name, ch.chat_id, ch.title, Chat.to_str[ch.chat_type]))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " +e.args[0])
+        conn.commit()
+        conn.close()
+
+    def del_chat(self, ch: Chat.Chat):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('DELETE from chats where name = ?', (ch.name,))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " +e.args[0])
+        conn.commit()
+        conn.close()
+
+    def add_chat_member(self, pl: ww6StatBotPlayer.Player, ch: Chat.Chat):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('INSERT into chat_members(uid, name) values(?, ?)',
+                        (pl.uid, ch.name))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " + e.args[0])
+        conn.commit()
+        conn.close()
+
+    def del_chat_member(self, pl: ww6StatBotPlayer.Player, ch: Chat.Chat):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('DELETE  from chat_members where uid = ? and name = ?',
+                        (pl.uid, ch.name))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " + e.args[0])
+        conn.commit()
+        conn.close()
+
 
     def update_stats(self, pl: ww6StatBotPlayer.Player):
         st = pl.stats

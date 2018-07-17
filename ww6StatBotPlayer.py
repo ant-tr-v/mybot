@@ -72,19 +72,19 @@ class Player(User):
         return self.uid == int(other)
 
     def __str__(self):
-        return '<a href = "t.me/{}">{}</a>{}\n<b>\nДата:</b>{}{}{}{}{}{}{}{}{}{}{}' \
+        return '<a href = "t.me/{}">{}</a>{}\n<b>\n📅Дата:</b> {}{}{}{}{}{}{}{}{}{}{}' \
             .format(self.username, self.nic,
-                    '\nОтряд:<b>{}</b>'.format(self.squad) if self.squad else '', self.stats.time,
-                    '<b>\nЗдоровье:    </b>{}'.format(self.stats.hp) if self.stats.hp else '',
-                    '<b>\nУрон:         </b>{}'.format(self.stats.attack) if self.stats.attack else '',
-                    '<b>\nБроня:       </b>{}'.format(self.stats.armor) if self.stats.armor else '',
-                    '<b>\nСила:         </b>{}'.format(self.stats.power) if self.stats.power else '',
-                    '<b>\nМеткость:   </b>{}'.format(self.stats.accuracy) if self.stats.accuracy else '',
-                    '<b>\nХаризма:    </b>{}'.format(self.stats.oratory) if self.stats.oratory else '',
-                    '<b>\nЛовкость:  </b>{}'.format(self.stats.agility) if self.stats.agility else '',
-                    '<b>\n\nУспешные рейды: </b>{}'.format(self.raids) if self.raids else '',
-                    '<b>\nИсследования: </b>{}'.format(self.building) if self.building else '',
-                    '<b>\nКарма: </b>{}'.format(self.karma) if self.karma else '')
+                    '\n📯Отряд:<b>{}</b>'.format(self.squad.title) if self.squad else '', self.stats.time,
+                    '<b>\n❤️Здоровье:    </b>{}'.format(self.stats.hp) if self.stats.hp else '',
+                    '<b>\n⚔️Урон:             </b>{}'.format(self.stats.attack) if self.stats.attack else '',
+                    '<b>\n🛡Броня:           </b>{}'.format(self.stats.armor) if self.stats.armor else '',
+                    '<b>\n💪Сила:              </b>{}'.format(self.stats.power) if self.stats.power else '',
+                    '<b>\n🔫Меткость:     </b>{}'.format(self.stats.accuracy) if self.stats.accuracy else '',
+                    '<b>\n🗣Харизма:       </b>{}'.format(self.stats.oratory) if self.stats.oratory else '',
+                    '<b>\n🤸🏽‍♂️Ловкость:      </b>{}'.format(self.stats.agility) if self.stats.agility else '',
+                    '<b>\n\n🗡Успешные рейды: </b>{}'.format(self.raids) if self.raids else '',
+                    '<b>\n🔧Исследования: </b>{}'.format(self.building) if self.building else '',
+                    '<b>\n⚙️Карма: </b>{}'.format(self.karma) if self.karma else '')
 
     def __repr__(self):
         return '{} Date:</b>{}{}{}{}{}{}{}{}{}{}{}' \

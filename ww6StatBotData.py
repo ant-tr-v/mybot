@@ -1,45 +1,48 @@
-from ww6StatBotPlayer import Player
-import ww6StatBotChat as Chat
-from ww6StatBotSQL import SQLManager
 import re
+
+import ww6StatBotChat as Chat
+from ww6StatBotPlayer import Player
+from ww6StatBotSQL import SQLManager
 
 
 class DataBox:
     def __init__(self, sql_manager: SQLManager):
         self.sql_manager = sql_manager
         self._players = self.sql_manager.get_all_players()  # Players
-        self._players_by_username = {pl.username: pl for pl in self._players.values()}  # Players
+        self._players_by_username = {pl.username.lower(): pl for pl in self._players.values()}  # Players
         self._blacklist = set(self.sql_manager.get_blacklist())  # user ids
-        self._admins = (self.sql_manager.get_admins())  # user ids
-        self._chats = {}  # Chat
-        self._squads = {}  # Squad
+        self._admins = set(self.sql_manager.get_admins())  # user ids
+        self._chats = {}  # Chat all, including bands and squads
+        self._squads = {}  # Chat
+        self._bands = {}  # Chat
+        self._chats_by_id = {}
+        print(self._admins)
+
         self._names = {'none', 'all'}
 
-        chats_and_types = self.sql_manager.get_all_chats()
+        chats = self.sql_manager.get_all_chats()
         masters = self.sql_manager.get_all_masters_uids()
         members = self.sql_manager.get_all_chat_members_uids()
-        for chat, chat_type in chats_and_types:
-            if chat_type == 'squad':
-                sq = Chat.Squad()
-                sq.name, sq.chat_id, sq.title = chat.name, chat.chat_id, chat.title
-                mem = members.get(chat.name)
-                if mem():
-                    for uid in mem:
-                        sq.members.add(self._players.get(uid))
-                mas = masters.get(chat.name)
-                if mas:
-                    for uid in mas:
-                        sq.masters.add(self._players.get(uid))
-                self._squads[sq.name] = sq
-            else:
-                cht = Chat.Chat()
-                cht.name, cht.chat_id, cht.title = chat.name, chat.chat_id, chat.title
-                mem = members.get(chat.name)
-                if mem():
-                    for uid in mem:
-                        cht.members.add(self._players.get(uid))
-                self._chats[cht.name] = cht
+        for chat in chats:
+            self._chats[chat.name] = chat
+            self._chats_by_id[chat.chat_id] = chat
+            mem = members.get(chat.name)
+            if mem:
+                for uid in mem:
+                    pl = self._players.get(uid)
+                    chat.members.add(pl)
+                    if chat.chat_type == Chat.ChatType.SQUAD:
+                        pl.squad = chat
+            mas = masters.get(chat.name)
+            if mas:
+                for uid in mas:
+                    chat.masters.add(self._players.get(uid))
+
             self._names.add(chat.name)
+            if chat.chat_type == Chat.ChatType.SQUAD:
+                self._squads[chat.name] = chat
+            elif chat.chat_type == Chat.ChatType.BAND:
+                self._bands[chat.name] = chat
 
     def add_player(self, uid, username, nic) -> Player:
         pl = Player()
@@ -51,11 +54,21 @@ class DataBox:
         self.sql_manager.add_user(pl)
         return pl
 
+    def del_player(self, player):
+        self.sql_manager.del_user(player)
+        del(self._players[player.uid])
+        del(self._players_by_username[player.username.lower()])
+        for chat in self._chats:
+            if player in chat.masters:
+                chat.masters.remove(player)
+            if player in chat.members:
+                chat.members.remove(player)
+
     def player(self, uid):
         return self._players.get(uid)
 
     def player_by_username(self, username) -> Player:
-        return self._players_by_username.get(username.strip('@,-').lower())
+        return self._players_by_username.get(username.strip('@,-._').lower())
 
     def all_players(self) -> set:
         return set(self._players.values())
@@ -72,8 +85,8 @@ class DataBox:
     def player_is_admin(self, player: Player) -> bool:
         return player.uid in self._admins
 
-    def player_has_rights(self, player: Player, squad: Chat.Squad) -> bool:
-        return self.player_is_admin(player) or player in squad.masters
+    def player_has_rights(self, player: Player, squad: Chat.Chat) -> bool:
+        return self.player_is_admin(player) or (squad and player in squad.masters)
 
     def players_by_username(self, _str: str, offset=0, parse_all=True):
         """
