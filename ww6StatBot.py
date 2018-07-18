@@ -94,7 +94,8 @@ class Bot:
             if ktype in c['keyboards'].keys():
                 k_list = c['keyboards'][ktype]
                 self.keyboards[keyboards[ktype]] = \
-                    telega.ReplyKeyboardMarkup([[telega.KeyboardButton(b) for b in b_list] for b_list in k_list], resize_keyboard=True)
+                    telega.ReplyKeyboardMarkup([[telega.KeyboardButton(b) for b in b_list] for b_list in k_list],
+                                               resize_keyboard=True)
 
     def __init__(self):
         self.tg_use_proxy = False
@@ -103,7 +104,7 @@ class Bot:
         self.load()
         self.sql_manager = SQLManager(self.db_path)
         self.data = DataBox(self.sql_manager)
-        self.commands = {'stat', 'remove'}  # TODO may be we should check them automatically from methods' names or load from json
+        self.commands = {'stat', 'remove', 'top', 'tops'}
 
         self.timer = Timer()
         self.updater = Updater(
@@ -120,7 +121,7 @@ class Bot:
         print(self.data.all_player_usernames())
         self.updater.idle()
 
-    def handle_start(self, bot, update):
+    def handle_start(self, bot: telega.Bot, update):
         message = update.message
         user = message.from_user
         if message.chat.type != "private":
@@ -135,7 +136,8 @@ class Bot:
                 "Перейди в игру, открой 📟 Пип-бой, "
                 "нажми команду <code>/me</code> внизу и перешли мне сообщение с полным профилем"
             )
-            markup = telega.InlineKeyboardMarkup([[telega.InlineKeyboardButton(text="Перейти в игру", url="https://t.me/WastelandWarsBot")]])
+            markup = telega.InlineKeyboardMarkup(
+                [[telega.InlineKeyboardButton(text="Перейти в игру", url="https://t.me/WastelandWarsBot")]])
             self.message_manager.send_message(chat_id=message.chat_id,
                                               parse_mode='HTML',
                                               text=message_text,
@@ -191,17 +193,26 @@ class Bot:
         self.message_manager.send_message(chat_id=uid, text='Я обновил твой профиль',
                                           reply_markup=self.keyboards[pl.keyboard])
 
-    def _stat(self, player: Player, parse_result: Parser.ParseResult):
+    def _get_players_with_reply(self, argument, message):
+        pl_set, unknown = self.data.players_by_username(argument)
+        # no usernames but message is reply
+        if not pl_set and not unknown and message.reply_to_message:
+            pl = self.data.player(message.reply_to_message.from_user.id)
+            if not pl:
+                pl_set, unknown = set(), {'@' + message.reply_to_message.from_user.username}
+            else:
+                pl_set, unknown = {pl}, set()
+        return pl_set, unknown
+
+    def _keyboard_markup(self, player: Player, chat: telega.Chat):
+        return self.keyboards[player.keyboard] if chat.type == 'private' else telega.ReplyKeyboardRemove()
+
+    def _stat(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        if parse_result.command.modifier:
+            return False
         chat_id = parse_result.message.chat_id
         # parsing usernames
-        pl_set, unknown = self.data.players_by_username(parse_result.command.argument)  # TODO: consider defining method for following 6 lines
-        # no usernames but message is reply
-        if not pl_set and not unknown and parse_result.message.reply_to_message:
-            pl = self.data.player(parse_result.message.reply_to_message.from_user.id)
-            if not pl:
-                pl_set, unknown = set(), {'@' + parse_result.message.reply_to_message.from_user.username}
-            else:
-                pl_set ,unknown = {pl}, set()
+        pl_set, unknown = self._get_players_with_reply(parse_result.command.argument, parse_result.message)
 
         # no usernames but message at all
         if not pl_set and not unknown:
@@ -209,40 +220,36 @@ class Bot:
             unknown = set()
 
         for pl in pl_set:
-            if self.data.player_has_rights(player, pl.squad) or player==pl:
+            if self.data.player_has_rights(player, pl.squad) or player == pl:
                 self.message_manager.send_message(chat_id=chat_id, text=str(pl), parse_mode='HTML',
-                                          disable_web_page_preview=True, reply_markup=self.keyboards[player.keyboard])
+                                                  disable_web_page_preview=True,
+                                                  reply_markup=self._keyboard_markup(player, parse_result.message.chat))
             else:
                 text = "У тебя нет такой власти!\nСтатистика @{} тебе не доступна".format(pl.username)
                 self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
                                                   disable_web_page_preview=True,
-                                                  reply_markup=self.keyboards[player.keyboard])
+                                                  reply_markup=self._keyboard_markup(player, parse_result.message.chat))
         if self.tg_bot_name in unknown:
             self.message_manager.send_message(chat_id=chat_id, text='Я бот\nМне нельзя играть в WW')
             unknown.remove(self.tg_bot_name)
         if unknown:
-            self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с '+ ', '.join(unknown))
+            self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с ' + ', '.join(unknown))
+        return True
 
-    def _remove(self, player: Player, parse_result: Parser.ParseResult):
+    def _remove(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        if parse_result.command.modifier:
+            return False
         chat_id = parse_result.message.chat_id
         if not self.data.player_is_admin(player):
             text = "На это ты не способен.\nЛишь админы могут это"
             self.message_manager.send_message(chat_id=chat_id, text=text)
-            return
+            return True
 
-        pl_set, unknown = self.data.players_by_username(
-            parse_result.command.argument)  # TODO: consider defining method for following 6 lines
-        # no usernames but message is reply
-        if not pl_set and not unknown and parse_result.message.reply_to_message:
-            pl = self.data.player(parse_result.message.reply_to_message.from_user.id)
-            if not pl:
-                pl_set, unknown = set(), {'@' + parse_result.message.reply_to_message.from_user.username}
-            else:
-                pl_set, unknown = {pl}, set()
+        pl_set, unknown = self._get_players_with_reply(parse_result.command.argument, parse_result.message)
 
         if not pl_set and not unknown:
             self.message_manager.send_message(chat_id=player.uid, text='А кого удалять-то?')
-            return
+            return True
 
         for pl in pl_set:
             self.data.del_player(pl)
@@ -250,17 +257,106 @@ class Bot:
             self.message_manager.send_message(chat_id=chat_id, text='Нет!\nСебя я не удалю😏')
             unknown.remove(self.tg_bot_name)
         if pl_set:
-            self.message_manager.send_message(chat_id=chat_id, text='Я удалил @' + ', @'.join([pl.username for pl in pl_set]))
+            self.message_manager.send_message(chat_id=chat_id,
+                                              text='Я удалил @' + ', @'.join([pl.username for pl in pl_set]))
         if unknown:
             self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с ' + ', '.join(unknown))
+        return True
+
+    def _top(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        mod = parse_result.command.modifier
+        chat_id = parse_result.message.chat_id
+        title = '<b>Топ игроков</b>'
+        chats, _ = self.data.chats_by_name(parse_result.command.argument, parse_all=False)
+        chat = chats[0] if chats else None
+        players = list(chats[0].members if chats else self.data.all_players())
+        result = []
+        player_res = 0
+        ind = 0
+        if mod == 'hp':
+            result = [(pl.stats.hp, pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.stats.hp
+            title = '<b>Топ танков</b>'
+        elif mod == 'attack':
+            result = [(pl.stats.attack, pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.stats.attack
+            title = '<b>Топ дамагеров</b>'
+        elif mod == 'accuracy':
+            result = [(pl.stats.accuracy, pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.stats.accuracy
+            title = '<b>Топ снайперов</b>'
+        elif mod == 'oratory':
+            result = [(pl.stats.oratory, pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.stats.oratory
+            title = '<b>Топ дипломатов</b>'
+        elif mod == 'agility':
+            result = [(pl.stats.agility, pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.stats.agility
+            title = '<b>Топ ловкачей</b>'
+        elif mod == 'raid':
+            result = [(pl.raids, pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.raids
+            title = '<b>Топ успешных рейдеров</b>'
+        elif mod == 'karma':
+            result = [(pl.karma, pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.karma
+            title = '<b>Топ кармы</b>'
+        elif not mod or mod in ('all', 'usernames'):
+            result = [(pl.stats.sum(), pl) for pl in players]
+            result.sort(reverse=True)
+            player_res = player.stats.sum()
+        else:
+            self.message_manager.send_message(chat_id=chat_id, text="Странный топ🤔\nНе знаю такого")
+            return True
+        if mod == 'all' or (len(parse_result.command.modifiers) > 1 and parse_result.command.modifiers[1] == 'all'):
+            if not self.data.player_has_rights(player, chat):
+                self.message_manager.send_message(chat_id=chat_id,
+                                                  text='Полный топ тебе посмотреть не удастся.\nВласти не хватит')
+                return True
+        else:
+            ind = result.index((player_res, player)) + 1 if (player_res, player) in result else 0
+            result = result[:5]
+        result = [(n + 1, res[1].nic, res[1].username, res[0]) for n, res in enumerate(result)]
+        if ind > 5:
+            result.append((ind, player.nic, player.username, player_res))
+        text = title + '\n'
+        lines = []
+        if 'usernames' not in parse_result.command.modifiers:
+            lines = ['{})<a href="t.me/{}">{}</a>: <b>{}</b>'.format(r[0], r[2], r[1], r[3]) for r in result]
+            if len(result) > 5:
+                lines.insert(5, '\n')
+        else:
+            lines = ['{})<a href="t.me/{}">{}</a>: <b>{}</b>'.format(r[0], r[2], r[2], r[3]) for r in result]
+            if len(result) > 5:
+                lines.insert(5, '\n')
+
+        self.message_manager.send_message(chat_id=chat_id, text=text + '\n'.join(lines), parse_mode='HTML',
+                                          disable_web_page_preview=True)
+        return True
+
+    def _tops(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        chat_id = parse_result.message.chat_id
+        text = "<b>Топы:</b>\n/top - общий топ\n"
+        top_list = [('hp', '❤танков'), ('attack', '⚔дамагергов'), ('agility', '🤸🏽‍♂ловкачей'),
+                    ('accuracy', '🔫снайперов'), ('oratory', '🗣дипломатов'), ('raid', '🗡рейдеров'),
+                    ('karma', '⚙кармы')]
+        text += '\n'.join(['/top_{} - топ {}'.format(t[0], t[1]) for t in top_list])
+        self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+        return True
 
     def handle_command(self, player: Player, parse_result: Parser.ParseResult):
         if not parse_result.command:
             return
         com = parse_result.command.name
-        if com in self.commands:
-            getattr(self, '_'+com)(player, parse_result)
-        elif parse_result.message.chat.type == 'private':
+        if com not in self.commands or not getattr(self, '_' + com)(player, parse_result) \
+                and parse_result.message.chat.type == 'private':
             self.message_manager.send_message(chat_id=player.uid, text='Неизвестная команда🤔\nСам придумал?')
 
     def handle_massage(self, bot, update: telega.Update):

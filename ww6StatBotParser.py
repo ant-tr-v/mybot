@@ -16,10 +16,10 @@ class Command:
         self.modifier = None
         if match:
             try:
-                self.command = match.group('command') or ""
-                self.name = match.group('name') or ""
+                self.command = match.group('command').lower() or ""
+                self.name = match.group('name').lower() or ""
                 self.argument = match.group('argument') or ""
-                modifier = match.group('modifier') or ""
+                modifier = match.group('modifier').lower() or ""
                 self.modifiers = modifier.split('_')
                 self.modifier = self.modifiers[0] if self.modifiers else None
             except:

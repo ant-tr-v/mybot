@@ -115,6 +115,7 @@ class SQLManager:
             chat = Chat.Chat()
             chat.name, chat.chat_id, chat.title = name, chat_id, full_name
             chat.chat_type = Chat.from_str[chat_type]
+            result.append(chat)
         conn.close()
         return result
 

@@ -16,7 +16,6 @@ class DataBox:
         self._squads = {}  # Chat
         self._bands = {}  # Chat
         self._chats_by_id = {}
-        print(self._admins)
 
         self._names = {'none', 'all'}
 
@@ -56,8 +55,8 @@ class DataBox:
 
     def del_player(self, player):
         self.sql_manager.del_user(player)
-        del(self._players[player.uid])
-        del(self._players_by_username[player.username.lower()])
+        del (self._players[player.uid])
+        del (self._players_by_username[player.username.lower()])
         for chat in self._chats:
             if player in chat.masters:
                 chat.masters.remove(player)
@@ -85,19 +84,19 @@ class DataBox:
     def player_is_admin(self, player: Player) -> bool:
         return player.uid in self._admins
 
-    def player_has_rights(self, player: Player, squad: Chat.Chat) -> bool:
+    def player_has_rights(self, player: Player, squad: Chat.Chat=None) -> bool:
         return self.player_is_admin(player) or (squad and player in squad.masters)
 
     def players_by_username(self, _str: str, offset=0, parse_all=True):
         """
-        if parse_all=True returns list of players and list of unknown usernames
-        else - list of players and the rest of the string
+        if parse_all=True returns set of players and list of unknown usernames
+        else - set of players and the rest of the string
         """
         res = set()
         negative = set()
         name = re.compile('@?(\S+)\s*')
-        i = l = 0
-        m = name.match(_str[l:])
+        i = left = 0
+        m = name.match(_str[left:])
         while m:
             username = m.group(1).lower()
             if i >= offset:
@@ -106,9 +105,36 @@ class DataBox:
                     res.add(pl)
                 else:
                     if not parse_all:
-                        return res, _str[l:]
-                    negative.add('@'+username)
+                        return res, _str[left:]
+                    negative.add('@' + username)
             i += 1
-            l += len(m.group(0))
-            m = name.match(_str[l:])
+            left += len(m.group(0))
+            m = name.match(_str[left:])
+        return res, negative
+
+    def chats_by_name(self, _str: str, offset=0, parse_all=True, chat_type=Chat.ChatType.CHAT):
+        """
+        if parse_all=True returns set of chats and list of unknown chatnames
+        else - set of chats and the rest of the string
+        """
+        res = set()
+        negative = set()
+        name = re.compile('(\S+)\s*')
+        src = {Chat.ChatType.CHAT: self._chats, Chat.ChatType.SQUAD: self._squads, Chat.ChatType.BAND: self._bands}[
+            chat_type]
+        i = left = 0
+        m = name.match(_str[left:])
+        while m:
+            chat_name = m.group(1).lower()
+            if i >= offset:
+                ch = src.get(chat_name)
+                if ch:
+                    res.add(ch)
+                else:
+                    if not parse_all:
+                        return res, _str[left:]
+                    negative.add(chat_name)
+            i += 1
+            left += len(m.group(0))
+            m = name.match(_str[left:])
         return res, negative

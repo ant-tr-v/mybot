@@ -72,7 +72,7 @@ class Player(User):
         return self.uid == int(other)
 
     def __str__(self):
-        return '<a href = "t.me/{}">{}</a>{}\n<b>\n📅Дата:</b> {}{}{}{}{}{}{}{}{}{}{}' \
+        return '<a href = "t.me/{}">{}</a>{}\n<b>\n📅Дата:</b> {}{}{}{}{}{}{}{}{}{}{}{}' \
             .format(self.username, self.nic,
                     '\n📯Отряд:<b>{}</b>'.format(self.squad.title) if self.squad else '', self.stats.time,
                     '<b>\n❤️Здоровье:    </b>{}'.format(self.stats.hp) if self.stats.hp else '',
@@ -82,6 +82,7 @@ class Player(User):
                     '<b>\n🔫Меткость:     </b>{}'.format(self.stats.accuracy) if self.stats.accuracy else '',
                     '<b>\n🗣Харизма:       </b>{}'.format(self.stats.oratory) if self.stats.oratory else '',
                     '<b>\n🤸🏽‍♂️Ловкость:      </b>{}'.format(self.stats.agility) if self.stats.agility else '',
+                    '<b>\n🔋Выносливость:    </b>{}'.format(self.stats.stamina) if self.stats.stamina else '',
                     '<b>\n\n🗡Успешные рейды: </b>{}'.format(self.raids) if self.raids else '',
                     '<b>\n🔧Исследования: </b>{}'.format(self.building) if self.building else '',
                     '<b>\n⚙️Карма: </b>{}'.format(self.karma) if self.karma else '')
