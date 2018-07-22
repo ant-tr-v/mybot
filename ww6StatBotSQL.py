@@ -3,8 +3,13 @@ import sqlite3 as sql
 import ww6StatBotChat as Chat
 import ww6StatBotPlayer
 
+__all__ = [
+    'SQLManager',
+]
+
 
 class SQLManager:
+
     def __init__(self, database):
         self.database = database
         conn = sql.connect(database)
@@ -145,6 +150,17 @@ class SQLManager:
         conn.close()
         return result
 
+    def add_blacklist(self, pl: ww6StatBotPlayer.Player):
+        uid = pl.uid
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('INSERT into blacklist(uid) values(?)', (uid, ))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " +e.args[0])
+        conn.commit()
+        conn.close()
+
     def get_blacklist(self):
         conn = sql.connect(self.database)
         cur = conn.cursor()
@@ -153,6 +169,17 @@ class SQLManager:
         conn.close()
         return res
 
+    def add_admin(self, pl: ww6StatBotPlayer.Player):
+        uid = pl.uid
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('INSERT into admins(uid) values(?)', (uid, ))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " +e.args[0])
+        conn.commit()
+        conn.close()
+
     def get_admins(self):
         conn = sql.connect(self.database)
         cur = conn.cursor()
@@ -160,6 +187,14 @@ class SQLManager:
         res = [r[0] for r in cur.fetchall()]
         conn.close()
         return res
+    
+    def del_admin(self, pl: ww6StatBotPlayer.Player):
+        uid = pl.uid
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        cur.execute('DELETE from admins where uid = ?', (uid,))
+        conn.commit()
+        conn.close()
 
     def update_user(self, pl: ww6StatBotPlayer.Player):
         uid = pl.uid
@@ -218,7 +253,7 @@ class SQLManager:
         cur = conn.cursor()
         try:
             cur.execute('INSERT into chats(name, chat_id, full_name, type) values(?, ?, ?, ?)',
-                        (ch.name, ch.chat_id, ch.title, Chat.to_str[ch.chat_type]))
+                (ch.name, ch.chat_id, ch.title, Chat.to_str[ch.chat_type]))
         except sql.Error as e:
             raise Exception("Sql error occurred: " +e.args[0])
         conn.commit()

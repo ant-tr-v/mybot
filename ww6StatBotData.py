@@ -1,8 +1,13 @@
 import re
+import warnings
 
-import ww6StatBotChat as Chat
+from ww6StatBotChat import Chat, ChatType
 from ww6StatBotPlayer import Player
 from ww6StatBotSQL import SQLManager
+
+__all__ = [
+    'DataBox',
+]
 
 
 class DataBox:
@@ -44,6 +49,9 @@ class DataBox:
                 self._bands[chat.name] = chat
 
     def add_player(self, uid, username, nic) -> Player:
+        '''
+        Adds player to DB and cache
+        '''
         pl = Player()
         pl.uid = uid
         pl.username = username
@@ -54,6 +62,10 @@ class DataBox:
         return pl
 
     def del_player(self, player):
+        '''
+        Removes player from everywhere.
+        Does not checks that given player exist
+        '''
         self.sql_manager.del_user(player)
         del (self._players[player.uid])
         del (self._players_by_username[player.username.lower()])
@@ -63,20 +75,58 @@ class DataBox:
             if player in chat.members:
                 chat.members.remove(player)
 
-    def player(self, uid):
+    def player(self, uid: int) -> Player:
+        warnings.warn(
+            "player is deprecated, use get_player_by_uid instead",
+            PendingDeprecationWarning
+        )
+        return self.get_player_by_uid(uid)
+
+    def get_player_by_uid(self, uid: int) -> Player:
+        '''
+        Returns Player with given telegram user id if known or None
+        '''
         return self._players.get(uid)
 
-    def player_by_username(self, username) -> Player:
+    def player_by_username(self, username: str) -> Player:
+        warnings.warn(
+            "player_by_username is deprecated, use get_player_by_username instead",
+            PendingDeprecationWarning
+        )
+        return self.get_player_by_username(username)
+
+    def get_player_by_username(self, username: str) -> Player:
+        '''
+        Returns Player with given telegram username if known or None
+        '''
         return self._players_by_username.get(username.strip('@,-._').lower())
 
     def all_players(self) -> set:
         return set(self._players.values())
 
     def all_player_usernames(self) -> set:
+        '''
+        Returns all players names *in lower case*
+        '''
         return set(self._players_by_username.keys())
+    
+    def add_blacklist(self, player: Player):
+        self.sql_manager.add_blacklist(player)
+        self._blacklist.add(player.uid)
 
     def uid_in_blacklist(self, uid: int) -> bool:
         return uid in self._blacklist
+    
+    def add_admin(self, player: Player):
+        self.sql_manager.add_admin(player)
+        self._admins.add(player.uid)
+    
+    def del_admin(self, player: Player):
+        self.sql_manager.del_admin(player)
+        try:
+            self._admins.remove(player.uid)
+        except KeyError:
+            pass
 
     def uid_is_admin(self, uid: int) -> bool:
         return uid in self._admins
@@ -84,7 +134,7 @@ class DataBox:
     def player_is_admin(self, player: Player) -> bool:
         return player.uid in self._admins
 
-    def player_has_rights(self, player: Player, squad: Chat.Chat=None) -> bool:
+    def player_has_rights(self, player: Player, squad: Chat=None) -> bool:
         return self.player_is_admin(player) or (squad and player in squad.masters)
 
     def players_by_username(self, _str: str, offset=0, parse_all=True):
@@ -111,8 +161,24 @@ class DataBox:
             left += len(m.group(0))
             m = name.match(_str[left:])
         return res, negative
+    
+    def add_chat(self, chat_id: int, name: str, full_name: str, chat_type=ChatType.CHAT):
+        chat = Chat()
+        chat.chat_id = chat_id
+        chat.title = full_name
+        chat.name = name
+        chat.chat_type = ChatType.CHAT
 
-    def chats_by_name(self, _str: str, offset=0, parse_all=True, chat_type=Chat.ChatType.CHAT):
+        self.sql_manager.add_chat(chat)
+
+        self._chats[chat.name] = chat
+        self._chats_by_id[chat.chat_id] = chat
+        self._names.add(chat.name)
+
+        return chat
+
+
+    def chats_by_name(self, _str: str, offset=0, parse_all=True, chat_type=ChatType.CHAT):
         """
         if parse_all=True returns set of chats and list of unknown chatnames
         else - set of chats and the rest of the string
@@ -120,7 +186,7 @@ class DataBox:
         res = set()
         negative = set()
         name = re.compile('(\S+)\s*')
-        src = {Chat.ChatType.CHAT: self._chats, Chat.ChatType.SQUAD: self._squads, Chat.ChatType.BAND: self._bands}[
+        src = {ChatType.CHAT: self._chats, ChatType.SQUAD: self._squads, ChatType.BAND: self._bands}[
             chat_type]
         i = left = 0
         m = name.match(_str[left:])
