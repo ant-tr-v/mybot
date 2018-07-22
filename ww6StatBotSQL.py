@@ -34,7 +34,7 @@ class SQLManager:
             'sex text, notifications int);'
             'CREATE TABLE IF NOT EXISTS user_keyboard(uid integer references users(uid) on delete CASCADE UNIQUE on conflict REPLACE,'
             'state int);'
-            'CREATE TABLE IF NOT EXISTS triggers(trigger text, chat text references chats(name) ON DELETE CASCADE, text text); ')  # TODO also include raid specific tables after refactoring of pin
+            'CREATE TABLE IF NOT EXISTS triggers(trigger text, chat text, text text); ')  # TODO also include raid specific tables after refactoring of pin and Daily Challenge tables
         conn.commit()
         conn.close()
 
@@ -66,7 +66,7 @@ class SQLManager:
     def _get_latest_stats(cur: sql.Cursor, uid):
         cur.execute(
             'select * from user_stats where uid = {0} and time = (SELECT max(time) FROM user_stats where uid = {0})'
-            .format(uid))
+                .format(uid))
         r = cur.fetchone()
         st = ww6StatBotPlayer.PlayerStat()
         stid = None
@@ -232,7 +232,7 @@ class SQLManager:
         try:
             cur.execute('INSERT into masters(uid, name) values(?, ?)', (uid, name))
         except sql.Error as e:
-            raise Exception("Sql error occurred: " +e.args[0])
+            raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
         conn.close()
 
@@ -244,7 +244,7 @@ class SQLManager:
         try:
             cur.execute('DELETE from masters where uid = ? and name = ?', (uid, name))
         except sql.Error as e:
-            raise Exception("Sql error occurred: " +e.args[0])
+            raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
         conn.close()
 
@@ -255,7 +255,18 @@ class SQLManager:
             cur.execute('INSERT into chats(name, chat_id, full_name, type) values(?, ?, ?, ?)',
                 (ch.name, ch.chat_id, ch.title, Chat.to_str[ch.chat_type]))
         except sql.Error as e:
-            raise Exception("Sql error occurred: " +e.args[0])
+            raise Exception("Sql error occurred: " + e.args[0])
+        conn.commit()
+        conn.close()
+
+    def update_chat(self, ch: Chat.Chat):
+        conn = sql.connect(self.database)
+        cur = conn.cursor()
+        try:
+            cur.execute('UPDATE chats set chat_id = ?, full_name = ?, type = ? where name = ?',
+                        (ch.chat_id, ch.title, Chat.to_str[ch.chat_type], ch.name))
+        except sql.Error as e:
+            raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
         conn.close()
 
@@ -265,7 +276,7 @@ class SQLManager:
         try:
             cur.execute('DELETE from chats where name = ?', (ch.name,))
         except sql.Error as e:
-            raise Exception("Sql error occurred: " +e.args[0])
+            raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
         conn.close()
 
@@ -291,7 +302,6 @@ class SQLManager:
         conn.commit()
         conn.close()
 
-
     def update_stats(self, pl: ww6StatBotPlayer.Player):
         st = pl.stats
         uid = pl.uid
@@ -303,6 +313,6 @@ class SQLManager:
                 'values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (uid, st.time, st.hp, st.attack, st.armor, st.power, st.accuracy, st.oratory, st.agility, st.stamina))
         except sql.Error as e:
-            raise Exception("Sql error occurred: " +e.args[0])
+            raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
         conn.close()

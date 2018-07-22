@@ -20,7 +20,7 @@ class DataBox:
         self._chats = {}  # Chat all, including bands and squads
         self._squads = {}  # Chat
         self._bands = {}  # Chat
-        self._chats_by_id = {}
+        self._chats_by_id = {} # sets of chats
 
         self._names = {'none', 'all'}
 
@@ -29,13 +29,16 @@ class DataBox:
         members = self.sql_manager.get_all_chat_members_uids()
         for chat in chats:
             self._chats[chat.name] = chat
-            self._chats_by_id[chat.chat_id] = chat
+            if chat.chat_id in self._chats_by_id.keys():
+                self._chats_by_id[chat.chat_id].add(chat)
+            else:
+                self._chats_by_id[chat.chat_id] = {chat}
             mem = members.get(chat.name)
             if mem:
                 for uid in mem:
                     pl = self._players.get(uid)
                     chat.members.add(pl)
-                    if chat.chat_type == Chat.ChatType.SQUAD:
+                    if chat.chat_type == ChatType.SQUAD:
                         pl.squad = chat
             mas = masters.get(chat.name)
             if mas:
@@ -43,9 +46,9 @@ class DataBox:
                     chat.masters.add(self._players.get(uid))
 
             self._names.add(chat.name)
-            if chat.chat_type == Chat.ChatType.SQUAD:
+            if chat.chat_type == ChatType.SQUAD:
                 self._squads[chat.name] = chat
-            elif chat.chat_type == Chat.ChatType.BAND:
+            elif chat.chat_type == ChatType.BAND:
                 self._bands[chat.name] = chat
 
     def add_player(self, uid, username, nic) -> Player:
@@ -75,6 +78,73 @@ class DataBox:
             if player in chat.members:
                 chat.members.remove(player)
 
+    def add_chat(self, chat_id, name, title, chat_type:ChatType):
+        if name in self._names:
+            raise ValueError('Name already in use')
+        chat = Chat()
+        chat.chat_id, chat.title, chat.name, chat.chat_type = chat_id, title, name, chat_type
+        self._chats[name] = chat
+        if chat.chat_id in self._chats_by_id.keys():
+            self._chats_by_id[chat.chat_id].add(chat)
+        else:
+            self._chats_by_id[chat.chat_id] = {chat}
+        self.sql_manager.add_chat(chat)
+        return chat
+
+    def update_chat(self, chat: Chat):
+        if chat.name not in self._names:
+            raise ValueError('No such chat')
+        if chat.chat_id in self._chats_by_id.keys():
+            self._chats_by_id[chat.chat_id].add(chat)
+        else:
+            self._chats_by_id[chat.chat_id] = {chat}
+        self.sql_manager.update_chat(chat)
+
+    def del_chat(self, chat: Chat):
+        del(self._chats_by_id[chat.chat_id])
+        del(self._chats[chat.name])
+        if chat.chat_type == ChatType.SQUAD:
+            del(self._squads[chat.name])
+        elif chat.chat_type == ChatType.BAND:
+            del(self._bands[chat.name])
+        self.sql_manager.del_chat(chat)
+
+    def get_chat_by_name(self, name) -> Chat:
+        """
+        Returns Chat with given name if known or None
+        """
+        return self._chats.get(name)
+
+    def get_chats_by_chat_id(self, chat_id):
+        """
+        Returns set of Chats with given telegram chat id if known or empty set()
+        """
+        return self._chats_by_id.get(chat_id) or set()
+
+    def get_all_chats(self):
+        return set(self._chats.values())
+
+    def add_player_to_chat(self, player: Player, chat: Chat):
+        """
+        Adds player to the chat
+        if this is squad - sets it as player's current squad
+        doesnt check if a player had a squad before
+        """
+        chat.members.add(player)
+        self.sql_manager.add_chat_member(player, chat)
+        if chat.chat_type == ChatType.SQUAD:
+            player.squad = chat
+
+    def del_player_from_chat(self, player: Player, chat: Chat):
+        """
+        deletes player from the chat
+        if this is squad equal to the player's squad - sets it player's current squad to None
+        """
+        chat.members.remove(player)
+        self.sql_manager.del_chat_member(player, chat)
+        if chat == player.squad:
+            player.squad = None
+
     def player(self, uid: int) -> Player:
         warnings.warn(
             "player is deprecated, use get_player_by_uid instead",
@@ -83,9 +153,9 @@ class DataBox:
         return self.get_player_by_uid(uid)
 
     def get_player_by_uid(self, uid: int) -> Player:
-        '''
+        """
         Returns Player with given telegram user id if known or None
-        '''
+        """
         return self._players.get(uid)
 
     def player_by_username(self, username: str) -> Player:
@@ -96,31 +166,31 @@ class DataBox:
         return self.get_player_by_username(username)
 
     def get_player_by_username(self, username: str) -> Player:
-        '''
+        """
         Returns Player with given telegram username if known or None
-        '''
+        """
         return self._players_by_username.get(username.strip('@,-._').lower())
 
     def all_players(self) -> set:
         return set(self._players.values())
 
     def all_player_usernames(self) -> set:
-        '''
+        """
         Returns all players names *in lower case*
-        '''
+        """
         return set(self._players_by_username.keys())
-    
+
     def add_blacklist(self, player: Player):
         self.sql_manager.add_blacklist(player)
         self._blacklist.add(player.uid)
 
     def uid_in_blacklist(self, uid: int) -> bool:
         return uid in self._blacklist
-    
+
     def add_admin(self, player: Player):
         self.sql_manager.add_admin(player)
         self._admins.add(player.uid)
-    
+
     def del_admin(self, player: Player):
         self.sql_manager.del_admin(player)
         try:
@@ -161,22 +231,6 @@ class DataBox:
             left += len(m.group(0))
             m = name.match(_str[left:])
         return res, negative
-    
-    def add_chat(self, chat_id: int, name: str, full_name: str, chat_type=ChatType.CHAT):
-        chat = Chat()
-        chat.chat_id = chat_id
-        chat.title = full_name
-        chat.name = name
-        chat.chat_type = ChatType.CHAT
-
-        self.sql_manager.add_chat(chat)
-
-        self._chats[chat.name] = chat
-        self._chats_by_id[chat.chat_id] = chat
-        self._names.add(chat.name)
-
-        return chat
-
 
     def chats_by_name(self, _str: str, offset=0, parse_all=True, chat_type=ChatType.CHAT):
         """

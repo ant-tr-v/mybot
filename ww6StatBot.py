@@ -130,7 +130,7 @@ class Bot:
             self.message_manager.send_message(chat_id=message.chat_id, text="Не особо рад тебя видеть.\nУходи",
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
-        elif not self.data.player(user.id):
+        elif not self.data.get_player_by_uid(user.id):
             message_text = (
                 "Привет, давай знакомиться!\n"
                 "Перейди в игру, открой 📟 Пип-бой, "
@@ -144,12 +144,12 @@ class Bot:
                                               reply_markup=markup)
             return
 
-        self.data.player(user.id).keyboard = Player.KeyboardType.DEFAULT
+        self.data.get_player_by_uid(user.id).keyboard = Player.KeyboardType.DEFAULT
         self.message_manager.send_message(chat_id=message.chat_id, text="Рад тебя видеть",
                                           reply_markup=self.keyboards[Player.KeyboardType.DEFAULT])
 
     def handle_profile(self, uid, parse_result: Parser.ParseResult):
-        pl = self.data.player(uid)
+        pl = self.data.get_player_by_uid(uid)
 
         # unknown user
         if not pl:
@@ -366,10 +366,10 @@ class Bot:
 
         parse_result = self.parser.run(message)
 
-        if not self.data.player(user.id):
+        if not self.data.get_player_by_uid(user.id):
             if parse_result.profile:
                 self.handle_profile(user.id, parse_result)
-                if not self.data.player(user.id):
+                if not self.data.get_player_by_uid(user.id):
                     return
             else:
                 self.handle_start(bot, update)
@@ -377,7 +377,7 @@ class Bot:
         elif parse_result.profile and message.chat.type == 'private':
             self.handle_profile(user.id, parse_result)
 
-        player = self.data.player(user.id)
+        player = self.data.get_player_by_uid(user.id)
 
         if parse_result.command:
             self.handle_command(player, parse_result)
