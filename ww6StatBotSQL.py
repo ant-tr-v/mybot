@@ -2,7 +2,6 @@ import sqlite3 as sql
 
 import ww6StatBotChat as Chat
 import ww6StatBotPlayer
-from sqlalchemy import Table, Column, Integer, String, MetaData, ForeignKey
 
 __all__ = [
     'SQLManager',

@@ -213,6 +213,8 @@ class TestDataBox(unittest.TestCase):
         self.data_box.add_blacklist(pl)
         self.assertTrue(self.data_box.uid_in_blacklist(uid))
 
+        self.data_box.del_player(pl)
+
     def test_admins(self):
         uid, username, nickname = self.get_test_player_data()
         pl = self.data_box.add_player(uid, username, nickname)
@@ -242,6 +244,7 @@ class TestDataBox(unittest.TestCase):
         self.assertFalse(self.data_box.player_has_rights(pl, chat))
         chat.masters.add(pl)
         self.assertTrue(self.data_box.player_has_rights(pl, chat))
+
         self.data_box.del_player(pl)
 
 
