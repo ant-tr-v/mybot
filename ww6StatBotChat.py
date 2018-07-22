@@ -21,7 +21,7 @@ class Chat:
         self.chat_type = ChatType.CHAT
 
     def __hash__(self):
-        hash(self.name)
+        return hash(self.name)
 
     def __str__(self):
         return self.name
