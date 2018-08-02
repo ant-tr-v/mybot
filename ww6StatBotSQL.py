@@ -65,8 +65,8 @@ class SQLManager:
     @staticmethod
     def _get_latest_stats(cur: sql.Cursor, uid):
         cur.execute(
-            'select * from user_stats where uid = {0} and time = (SELECT max(time) FROM user_stats where uid = {0})'
-                .format(uid))
+            'select * from user_stats where uid = {0} and time = (SELECT max(time)'
+            ' FROM user_stats where uid = {0})'.format(uid))
         r = cur.fetchone()
         st = ww6StatBotPlayer.PlayerStat()
         stid = None
@@ -119,7 +119,7 @@ class SQLManager:
             name, chat_id, full_name, chat_type = r
             chat = Chat.Chat()
             chat.name, chat.chat_id, chat.title = name, chat_id, full_name
-            chat.chat_type = Chat.from_str[chat_type]
+            chat.chat_type = Chat.str_to_chat_type(chat_type)
             result.append(chat)
         conn.close()
         return result
@@ -157,7 +157,7 @@ class SQLManager:
         try:
             cur.execute('INSERT into blacklist(uid) values(?)', (uid, ))
         except sql.Error as e:
-            raise Exception("Sql error occurred: " +e.args[0])
+            raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
         conn.close()
 
@@ -176,7 +176,7 @@ class SQLManager:
         try:
             cur.execute('INSERT into admins(uid) values(?)', (uid, ))
         except sql.Error as e:
-            raise Exception("Sql error occurred: " +e.args[0])
+            raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
         conn.close()
 
@@ -253,7 +253,7 @@ class SQLManager:
         cur = conn.cursor()
         try:
             cur.execute('INSERT into chats(name, chat_id, full_name, type) values(?, ?, ?, ?)',
-                (ch.name, ch.chat_id, ch.title, Chat.to_str[ch.chat_type]))
+                        (ch.name, ch.chat_id, ch.title, Chat.chat_type_to_str(ch.chat_type)))
         except sql.Error as e:
             raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()
@@ -264,7 +264,7 @@ class SQLManager:
         cur = conn.cursor()
         try:
             cur.execute('UPDATE chats set chat_id = ?, full_name = ?, type = ? where name = ?',
-                        (ch.chat_id, ch.title, Chat.to_str[ch.chat_type], ch.name))
+                        (ch.chat_id, ch.title, Chat.chat_type_to_str(ch.chat_type), ch.name))
         except sql.Error as e:
             raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()

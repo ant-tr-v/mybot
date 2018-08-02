@@ -21,6 +21,7 @@ from ww6StatBotData import DataBox
 from ww6StatBotPlayer import Player, PlayerStat
 from ww6StatBotSQL import SQLManager
 from ww6StatBotUtils import MessageManager, Timer
+from ww6StatBotChat import Chat, ChatType, chat_type_to_str_ru, str_to_chat_type
 
 
 class StatType(Enum):
@@ -104,7 +105,7 @@ class Bot:
         self.load()
         self.sql_manager = SQLManager(self.db_path)
         self.data = DataBox(self.sql_manager)
-        self.commands = {'stat', 'remove', 'top', 'tops'}
+        self.commands = {'stat', 'remove', 'top', 'tops', 'chats', 'new'}
 
         self.timer = Timer()
         self.updater = Updater(
@@ -263,6 +264,81 @@ class Bot:
             self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с ' + ', '.join(unknown))
         return True
 
+    def _chats(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        chat_id = parse_result.message.chat_id
+        if parse_result.command.modifier == 'list':
+            if not self.data.player_is_admin(player):
+                self.message_manager.send_message(chat_id=chat_id, text='Полный список чатов виден лишь админам')
+                return True
+
+            print(1)
+            chats = list(self.data.get_all_chats())
+            print(2)
+            print(chats)
+            chats.sort(key=lambda ch: (ch.chat_type, ch.title))
+            print(chats)
+            lines = []
+            for chat in chats:
+                lines.append('{} aka <b>{}</b> - {}'.format(chat.title, chat.name, chat_type_to_str_ru(chat.chat_type)))
+            print(lines)
+            if not lines:
+                self.message_manager.send_message(chat_id=chat_id, text='Нет еще ни одного чата')
+            else:
+                self.message_manager.send_split(chat_id=chat_id, text='\n'.join(lines))
+            return True
+        return False
+
+    def _new(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        mod = parse_result.command.modifier
+        chat_id = parse_result.message.chat_id
+        if mod not in ('squad', 'band', 'chat') or len(parse_result.command.modifiers) > 1:
+            return False
+        if not self.data.player_is_admin(player):
+            self.message_manager.send_message(chat_id=chat_id, text='Что-то с тобой не так...\nТочно! Ты не админ!')
+            return True
+        tlg_chat = parse_result.message.chat
+        if tlg_chat.type != 'supergroup':
+            self.message_manager.send_message(chat_id=chat_id, text='Чат должен быть супергруппой')
+            return True
+        if not parse_result.command.argument:
+            self.message_manager.send_message(chat_id=chat_id, text='Укажи краткое имя чата')
+            return True
+        name = parse_result.command.argument.split()[0].lower()
+        chat = Chat()
+        chat.chat_id, chat.name, chat.title = tlg_chat.id, name, tlg_chat.title
+        chat.chat_type = str_to_chat_type(mod)
+        try:
+            self.data.add_chat(chat)
+        except ValueError:
+            self.message_manager.send_message(chat_id=chat_id, text='Это краткое имя недоступно')
+        else:
+            self.message_manager.send_message(chat_id=chat_id, text="Создана привязка {} - этот чат".format(chat.name))
+        return True
+
+    def _delete(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        mod = parse_result.command.modifier
+        chat_id = parse_result.message.chat_id
+        if mod not in ('chat', ) or len(parse_result.command.modifiers) > 1:
+            return False
+        if not self.data.player_is_admin(player):
+            self.message_manager.send_message(chat_id=chat_id, text='Что-то с тобой не так...\nДа ты же не админ!')
+            return True
+        if not parse_result.command.argument:
+            self.message_manager.send_message(chat_id=chat_id, text='Укажи краткое имя чата')
+            return True
+        name = parse_result.command.argument.split()[0].lower()
+        chat = self.data.get_chat_by_name(name)
+        if not chat:
+            self.message_manager.send_message(chat_id=chat_id, text='Да тут и удалять то нечего')
+            return True
+        self.data.del_chat(chat)
+        return True
+
+    def _add(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        mod = parse_result.command.modifier
+        chat_id = parse_result.message.chat_id
+        if mod == 'master':
+
     def _top(self, player: Player, parse_result: Parser.ParseResult) -> bool:
         mod = parse_result.command.modifier
         chat_id = parse_result.message.chat_id
@@ -272,7 +348,6 @@ class Bot:
         players = list(chats[0].members if chats else self.data.all_players())
         result = []
         player_res = 0
-        ind = 0
         if mod == 'hp':
             result = [(pl.stats.hp, pl) for pl in players]
             result.sort(reverse=True)
@@ -315,7 +390,9 @@ class Bot:
         else:
             self.message_manager.send_message(chat_id=chat_id, text="Странный топ🤔\nНе знаю такого")
             return True
-        if mod == 'all' or (len(parse_result.command.modifiers) > 1 and parse_result.command.modifiers[1] == 'all'):
+
+        ind = 0
+        if 'all' in parse_result.command.modifiers:
             if not self.data.player_has_rights(player, chat):
                 self.message_manager.send_message(chat_id=chat_id,
                                                   text='Полный топ тебе посмотреть не удастся.\nВласти не хватит')

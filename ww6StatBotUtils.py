@@ -35,12 +35,12 @@ class MessageManager:
         except:
             pass
 
-    def send_split(self,  msg, chat_id, N):
-        split = msg.split('\n')
-        for i in range(0, len(split), N):
+    def send_split(self, text, chat_id, lines_num=50, disable_web_page_preview=True):
+        split = text.split('\n')
+        for i in range(0, len(split), lines_num):
             time.sleep(1. / 30)
-            self.send_message(chat_id=chat_id, text='\n'.join(split[i:min(i + N, len(split))]), parse_mode='HTML',
-                            disable_web_page_preview=True)
+            self.send_message(chat_id=chat_id, text='\n'.join(split[i:min(i + lines_num, len(split))]), parse_mode='HTML',
+                              disable_web_page_preview=disable_web_page_preview)
 
     def pin(self, chat_id, text, uid):
         mid = 0

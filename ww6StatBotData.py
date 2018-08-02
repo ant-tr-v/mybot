@@ -78,12 +78,10 @@ class DataBox:
             if player in chat.members:
                 chat.members.remove(player)
 
-    def add_chat(self, chat_id, name, title, chat_type:ChatType):
-        if name in self._names:
+    def add_chat(self, chat):
+        if chat.name in self._names:
             raise ValueError('Name already in use')
-        chat = Chat()
-        chat.chat_id, chat.title, chat.name, chat.chat_type = chat_id, title, name, chat_type
-        self._chats[name] = chat
+        self._chats[chat.name] = chat
         if chat.chat_id in self._chats_by_id.keys():
             self._chats_by_id[chat.chat_id].add(chat)
         else:

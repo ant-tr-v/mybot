@@ -7,8 +7,16 @@ class ChatType(IntEnum):
     BAND = 2
 
 
-from_str = {'chat': ChatType.CHAT, 'squad': ChatType.SQUAD, 'band': ChatType.BAND}
-to_str = {ChatType.CHAT: 'chat', ChatType.SQUAD: 'squad', ChatType.BAND: 'band'}
+def chat_type_to_str(chat_type: ChatType):
+    return {ChatType.CHAT: 'chat', ChatType.SQUAD: 'squad', ChatType.BAND: 'band'}[chat_type]
+
+
+def chat_type_to_str_ru(chat_type: ChatType):
+    return {ChatType.CHAT: 'чат', ChatType.SQUAD: 'отряд', ChatType.BAND: 'банда'}[chat_type]
+
+
+def str_to_chat_type(chat_type: str):
+    return {'chat': ChatType.CHAT, 'squad': ChatType.SQUAD, 'band': ChatType.BAND}[chat_type]
 
 
 class Chat:
@@ -35,3 +43,5 @@ class Chat:
         res.members = self.members.copy()
         res.masters = self.masters.copy()
         return res
+    def __repr__(self):
+        return "id: {}; title: {}; name: {}; type: {}".format(self.chat_id, self.title, self.name, chat_type_to_str(self.chat_type))

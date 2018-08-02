@@ -18,7 +18,7 @@ class Command:
             try:
                 self.command = match.group('command').lower() or ""
                 self.name = match.group('name').lower() or ""
-                self.argument = match.group('argument') or ""
+                self.argument = match.group('argument').strip() or ""
                 modifier = match.group('modifier').lower() or ""
                 self.modifiers = modifier.split('_')
                 self.modifier = self.modifiers[0] if self.modifiers else None
