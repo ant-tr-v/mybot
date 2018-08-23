@@ -89,6 +89,8 @@ class SQLManager:
         pl.raids = self._get_raids(cur, uid)
         pl.building = self._get_raids(cur, uid)
         pl.karma = self._get_karma(cur, uid)
+        sex = cur.execute('select sex from user_settings  where uid = ?', (uid,))  # TODO: notifications
+        pl.settings.sex = sex
         _, pl.stats = self._get_latest_stats(cur, uid)
         if opened:
             conn.close()
@@ -213,6 +215,7 @@ class SQLManager:
         conn = sql.connect(self.database)
         cur = conn.cursor()
         cur.execute('INSERT into users(uid, username, nic) values(?, ?, ?)', (uid, username, nic))
+        cur.execute('INSERT into user_settings(uid, sex, notifications) values(?, ?, ?)', (uid, 'male', 0))
         conn.commit()
         conn.close()
 

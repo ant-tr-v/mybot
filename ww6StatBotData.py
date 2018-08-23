@@ -72,7 +72,7 @@ class DataBox:
         self.sql_manager.del_user(player)
         del (self._players[player.uid])
         del (self._players_by_username[player.username.lower()])
-        for chat in self._chats:
+        for chat in self._chats.values():
             if player in chat.masters:
                 chat.masters.remove(player)
             if player in chat.members:
@@ -143,6 +143,14 @@ class DataBox:
         if chat == player.squad:
             player.squad = None
 
+    def add_master_to_chat(self, player: Player, chat: Chat):
+        chat.masters.add(player)
+        self.sql_manager.add_master(player, chat)
+
+    def del_master_from_chat(self, player: Player, chat: Chat):
+        chat.masters.remove(player)
+        self.sql_manager.del_master(player, chat)
+
     def player(self, uid: int) -> Player:
         warnings.warn(
             "player is deprecated, use get_player_by_uid instead",
@@ -171,6 +179,9 @@ class DataBox:
 
     def all_players(self) -> set:
         return set(self._players.values())
+
+    def all_admins(self) -> set:
+        return set([self._players[uid] for uid in self._admins])
 
     def all_player_usernames(self) -> set:
         """
@@ -212,6 +223,8 @@ class DataBox:
         """
         res = set()
         negative = set()
+        if not _str:
+            return res, negative
         name = re.compile('@?(\S+)\s*')
         i = left = 0
         m = name.match(_str[left:])

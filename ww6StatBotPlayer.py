@@ -53,6 +53,7 @@ class Player(User):
         self.nic = nic
         self.keyboard = self.KeyboardType.DEFAULT
         self.stats = PlayerStat()
+        self.settings = PlayerSettings()
         self.indexes = [None, None, None]
         self.squad = ''
         self.raids = 0
@@ -101,3 +102,6 @@ class Player(User):
                     ' Raids: {}'.format(self.raids),
                     ' Building: {}'.format(self.building),
                     ' Karma: {}'.format(self.karma))
+
+    def choose_text_by_sex(self, male_text, female_text):
+        return male_text if self.settings == 'male' else female_text
