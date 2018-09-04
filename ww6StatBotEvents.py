@@ -5,12 +5,13 @@ import telegram as telega
 from ww6StatBotPlayer import PlayerSettings, Player
 
 class Notificator:
-    def __init__(self, players :dict, bot:telega.Bot):
+    def __init__(self, players: dict, bot: telega.Bot):
         """we assume that settings.notif_time is equal for all players and players is not empty"""
         self.players = players
         self.bot = bot
         dt, t = self._next_time()
-        threading.Timer(dt, self.notify, args=[t]).start()
+        self.timer = threading.Timer(dt, self.notify, args=[t])
+        self.timer.start()
 
     def _next_time(self):
         now = datetime.datetime.now()
@@ -47,4 +48,8 @@ class Notificator:
                     pass
 
         dt, t = self._next_time()
-        threading.Timer(dt, self.notify, args=[t]).start()
+        self.timer = threading.Timer(dt, self.notify, args=[t])
+        self.timer.start()
+
+    def stop(self):
+        self.timer.cancel()

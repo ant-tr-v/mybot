@@ -156,12 +156,10 @@ class Bot:
         self.updater.dispatcher.add_handler(massage_handler)
         self.updater.dispatcher.add_handler(join_handler)
         self.updater.dispatcher.add_handler(callback_handler)
-        self.updater.start_polling(clean=True)
 
         print("admins:", self.admins)
         print("squadnames:", self.squadnames.keys())
         print("users", self.usersbyname.keys())
-        self.updater.idle()
 
     def configure(self):
         f = open(self.CONFIG_PATH)
@@ -199,6 +197,7 @@ class Bot:
                     'password': proxy_config['password']
                 }
             }
+        f.close()
 
     def handle_start(self, bot, update):
         message = update.message
@@ -1353,7 +1352,15 @@ class Bot:
                                                   text="Неизвестная команда... Сам придумал?")
 
     def start(self):
-        self.updater.start_polling()
+        self.updater.start_polling(clean=True)
+        self.updater.idle()
+    
+    def stop(self):
+        self.updater.stop()
+        self.message_manager.stop()
+        if self.notificator:
+            self.notificator.stop()
+        self.timer.stop()
 
     def handle_massage(self, bot, update: telega.Update):
         if update.channel_post:
