@@ -607,6 +607,9 @@ class Bot:
                 start = text.find(word)
                 break
 
+        if start < 0:
+            start = 0
+
         # Is there any squads?
         if not sqs:
             if not allow_empty_squads:
@@ -630,9 +633,11 @@ class Bot:
             self.message_manager.send_message(chat_id=self.users[user.id].chatid, text=message_text)
             return None, None
 
-        if not text[start:] and not default_message:
+        if (not text[start:] or (start == 0)) and not default_message:
             self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Но что же мне им написать?")
             return None, None
+        if start == 0:
+            return sqs, default_message
         return sqs, text[start:] or default_message
 
     def user_has_squad_permission(self, user: telega.User, squad: str) -> bool:
