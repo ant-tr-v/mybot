@@ -1,3 +1,4 @@
+import datetime
 import sqlite3 as sql
 
 import ww6StatBotChat as Chat
@@ -14,6 +15,7 @@ class SQLManager:
         self.database = database
         conn = sql.connect(database)
         cur = conn.cursor()
+        conn.execute("PRAGMA foreign_keys = ON")
         cur.executescript(
             'CREATE TABLE IF NOT EXISTS users(uid integer UNIQUE on conflict REPLACE, username text, nic text);'
             'CREATE TABLE IF NOT EXISTS blacklist(uid integer UNIQUE on conflict IGNORE);'
@@ -72,6 +74,7 @@ class SQLManager:
         stid = None
         if r:
             stid, uid, st.time, st.hp, st.attack, st.armor, st.power, st.accuracy, st.oratory, st.agility, st.stamina = r
+            st.time = datetime.datetime.strptime(st.time, '%Y-%m-%d %H:%M:%S')
         return stid, st
 
     def get_player(self, pl: ww6StatBotPlayer.Player, conn: sql.Connection = None):  # ! pl is modified
@@ -222,6 +225,7 @@ class SQLManager:
     def del_user(self, pl: ww6StatBotPlayer.Player):
         uid = pl.uid
         conn = sql.connect(self.database)
+        conn.execute("PRAGMA foreign_keys = ON")
         cur = conn.cursor()
         cur.execute('DELETE from users where uid = ?', (uid,))
         conn.commit()
@@ -243,6 +247,7 @@ class SQLManager:
         uid = pl.uid
         name = ch.name
         conn = sql.connect(self.database)
+        conn.execute("PRAGMA foreign_keys = ON")
         cur = conn.cursor()
         try:
             cur.execute('DELETE from masters where uid = ? and name = ?', (uid, name))
@@ -296,6 +301,7 @@ class SQLManager:
 
     def del_chat_member(self, pl: ww6StatBotPlayer.Player, ch: Chat.Chat):
         conn = sql.connect(self.database)
+        conn.execute("PRAGMA foreign_keys = ON")
         cur = conn.cursor()
         try:
             cur.execute('DELETE  from chat_members where uid = ? and name = ?',
@@ -310,11 +316,13 @@ class SQLManager:
         uid = pl.uid
         conn = sql.connect(self.database)
         try:
+            print(st.time, type(st.time))
+            print(st.time.isoformat(' ', 'seconds'))
             cur = conn.cursor()
             cur.execute(
                 'INSERT into user_stats(uid, time, hp, attack, armor, power, accuracy, oratory, agility, stamina) '
                 'values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (uid, st.time, st.hp, st.attack, st.armor, st.power, st.accuracy, st.oratory, st.agility, st.stamina))
+                (uid, st.time.isoformat(' ', 'seconds'), st.hp, st.attack, st.armor, st.power, st.accuracy, st.oratory, st.agility, st.stamina))
         except sql.Error as e:
             raise Exception("Sql error occurred: " + e.args[0])
         conn.commit()

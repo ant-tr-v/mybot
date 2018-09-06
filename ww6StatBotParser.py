@@ -117,7 +117,7 @@ class Parser:
         match = self.re_profile.search(message.text) or self.re_profile_short.search(message.text)
         if match:
             pr.profile = Profile(match)
-            pr.profile.stats.time = str(message.forward_date)
+            pr.profile.stats.time = message.forward_date
 
     def _parse_raid(self, message: telega.Message, pr: ParseResult):
         text = message.text
@@ -128,27 +128,26 @@ class Parser:
                 hour = m.group('hour')
                 day = m.group('day')
                 month = m.group('month')
-                ddate = None
+                date = None
                 if hour is None:
                     h = (((int(date.hour) % 24) - 1) // 6) * 6 + 1
                     d = 0
                     if h < 0:
                         h = 19
                         d = -1
-                    ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
+                    date = datetime.datetime(year=date.year, month=date.month, day=date.day,
                                               hour=h) + datetime.timedelta(days=d)
                 elif day is None:
-                    ddate = datetime.datetime(year=date.year, month=date.month, day=date.day,
+                    date = datetime.datetime(year=date.year, month=date.month, day=date.day,
                                               hour=int(hour) % 24)
-                    if message.forward_date - ddate < -datetime.timedelta(seconds=1):
-                        ddate = ddate - datetime.timedelta(days=1)
+                    if message.forward_date - date < -datetime.timedelta(seconds=1):
+                        date = date - datetime.timedelta(days=1)
                 else:
-                    ddate = datetime.datetime(year=date.year, month=int(month), day=int(day),
+                    date = datetime.datetime(year=date.year, month=int(month), day=int(day),
                                               hour=int(hour) % 24)
-                    if message.forward_date - ddate < -datetime.timedelta(seconds=1):
-                        ddate = datetime.datetime(ddate.year - 1, ddate.month, ddate.day, ddate.hour)
+                    if message.forward_date - date < -datetime.timedelta(seconds=1):
+                        date = datetime.datetime(date.year - 1, date.month, date.day, date.hour)
 
-                date = str(ddate).split('.')[0]
                 pr.raid_text = m.group('msg')
                 pr.raid_time = date
             except:

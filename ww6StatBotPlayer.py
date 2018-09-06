@@ -1,11 +1,12 @@
 import datetime
 from enum import Enum
+from pytils.dt import distance_of_time_in_words
 from telegram import User as telegram_User
 
 
 class PlayerStat:
     def __init__(self):
-        self.time = str(datetime.datetime.now())
+        self.time = datetime.datetime.now()
         self.hp = 0
         self.attack = 0
         self.armor = 0
@@ -73,9 +74,12 @@ class Player(User):
         return self.uid == int(other)
 
     def __str__(self):
-        return '<a href = "t.me/{}">{}</a>{}\n<b>\n📅Дата:</b> {}{}{}{}{}{}{}{}{}{}{}{}' \
+        time = self.stats.time
+        now = datetime.datetime.now()
+        return '<a href = "t.me/{}">{}</a>{}\n<b>\n📅Обновлено:</b>  {}{}{}{}{}{}{}{}{}{}{}{}' \
             .format(self.username, self.nic,
-                    '\n📯Отряд:<b>{}</b>'.format(self.squad.title) if self.squad else '', self.stats.time,
+                    '\n📯Отряд:<b>{}</b>'.format(self.squad.title) if self.squad else '',
+                    distance_of_time_in_words(time, accuracy=2, to_time=now),
                     '<b>\n❤️Здоровье:    </b>{}'.format(self.stats.hp) if self.stats.hp else '',
                     '<b>\n⚔️Урон:             </b>{}'.format(self.stats.attack) if self.stats.attack else '',
                     '<b>\n🛡Броня:           </b>{}'.format(self.stats.armor) if self.stats.armor else '',
@@ -91,7 +95,7 @@ class Player(User):
     def __repr__(self):
         return '{} Date:</b>{}{}{}{}{}{}{}{}{}{}{}' \
             .format(self.username, self.nic,
-                    'Squad: {}'.format(self.squad), self.stats.time,
+                    'Squad: {}'.format(self.squad), self.stats.time.isoformat(' ', 'minutes'),
                     ' Hp: {}'.format(self.stats.hp),
                     ' Attack: {}'.format(self.stats.attack),
                     ' Armor: {}'.format(self.stats.armor),

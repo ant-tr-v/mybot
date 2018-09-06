@@ -15,6 +15,7 @@ from telegram.ext import CommandHandler
 from telegram.ext import Filters
 from telegram.ext import MessageHandler
 from telegram.ext import Updater
+from pytils.dt import numeral
 
 import ww6StatBotParser as Parser
 from ww6StatBotData import DataBox
@@ -179,16 +180,16 @@ class Bot:
                 return
             pl.username = parse_result.username
             pl.nic = parse_result.profile.nic
-            self.sql_manager.update_user(pl)
+            self.data.update_player(pl)
         elif pl.username != parse_result.username:
             pl.username = parse_result.username
             pl.nic = parse_result.profile.nic
-            self.sql_manager.update_user(pl)
+            self.data.update_player(pl)
 
         st = PlayerStat()
         st.copy_stats(pl.stats)
         pl.stats.copy_stats(parse_result.profile.stats)
-        self.sql_manager.update_stats(pl)
+        self.data.update_stats(pl)
         if st.time > pl.stats.time and st.hp != 0:  # older and not first
             pl.stats.copy_stats(st)
         self.message_manager.send_message(chat_id=uid, text='Я обновил твой профиль',
@@ -209,6 +210,7 @@ class Bot:
         return self.keyboards[player.keyboard] if chat.type == 'private' else telega.ReplyKeyboardRemove()
 
     def _stat(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        # /stat
         if parse_result.command.modifier:
             return False
         chat_id = parse_result.message.chat_id
@@ -237,18 +239,70 @@ class Bot:
             self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с ' + ', '.join(unknown))
         return True
 
+    def _info(self, f, player: Player, parse_result: Parser.ParseResult) -> bool:
+        mod = parse_result.command.modifier
+        chat_id = parse_result.message.chat_id
+        if mod not in ('player', 'chat', None):
+            return False
+        # /info_chat
+        if parse_result.command.modifier == 'chat':
+            if not self.data.player_is_admin(player):
+                text = "Не админам это нельзя"
+                self.message_manager.send_message(chat_id=chat_id, text=text)
+                return True
+            chats, unknown = self.data.chats_by_name(parse_result.command.argument)
+            for chat in chats:
+                ch_type = chat_type_to_str_ru(chat.chat_type)
+                ch_type[0] = ch_type[0].upper()
+                text = '{} <b>{}</b>\nКомандир{}:\n  {}\nВсего {}'.format(
+                    ch_type, chat.title, 'ы' if len(chat.masters) > 1 else '',
+                    '\n  '.join(['<a = href="t.me/{}">{}</a>'.format(pl.username, pl.nic) for pl in chat.masters]),
+                    numeral.get_plural(len(chat.members), u"игрок, игока, игроков"))
+                self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
+                                                  disable_web_page_preview=True)
+            if unknown:
+                self.message_manager.send_message(chat_id=chat_id, text='Я не знаю что такое ' + ' или '.join(unknown))
+            return True
+        # /info_player /info
+        pl_set, unknown = self._get_players_with_reply(parse_result.command.argument, parse_result.message)
+
+        for pl in pl_set:
+            lines = []
+            if mod == 'player' or mod is None:
+                text = 'Это  <a href="t.me/{}">{}</a> {}'.format(pl.username, pl.nic, 'Из отряда <b>{}</b>'.format(
+                    pl.squad) if pl.squad else '')
+                lines.append(text)
+
+            if lines:
+                self.message_manager.send_split('\n'.join(lines), chat_id)
+
+        if self.tg_bot_name in unknown:
+            self.message_manager.send_message(chat_id=chat_id, text='Я бот\nМне нельзя играть в WW')
+            unknown.remove(self.tg_bot_name)
+        if unknown:
+            self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с ' + ', '.join(unknown))
+
     def _remove(self, player: Player, parse_result: Parser.ParseResult) -> bool:
-        if parse_result.command.modifier:
+        print(parse_result.command.modifier)
+        if parse_result.command.modifier is not None and parse_result.command.modifier != 'chat':
             return False
         chat_id = parse_result.message.chat_id
         if not self.data.player_is_admin(player):
             text = "На это ты не способен.\nЛишь админы могут это"
             self.message_manager.send_message(chat_id=chat_id, text=text)
             return True
-
+        # /remove_chat
+        if parse_result.command.modifier == 'chat':
+            chats, unknown = self.data.chats_by_name(parse_result.command.argument)
+            for chat in chats:
+                self.data.del_chat(chat)
+                self.message_manager.send_message(chat_id=chat_id, text='Удален ' + chat.name)
+            if unknown:
+                self.message_manager.send_message(chat_id=chat_id, text='Я не знаю что такое ' + ' '.join(unknown))
+            return True
         pl_set, unknown = self._get_players_with_reply(parse_result.command.argument, parse_result.message)
 
-        if not pl_set and not unknown:
+        if not pl_set and not unknown and parse_result.message.chat.type == 'private':
             self.message_manager.send_message(chat_id=player.uid, text='А кого удалять-то?')
             return True
 
@@ -352,10 +406,16 @@ class Bot:
                 self.message_manager.send_message(chat_id=chat_id, text='Прав тебе на то не хватит')
                 return True
             for pl in pl_set:
-                self.data.add_player_to_chat(pl, chat)
-                self.message_manager.send_message(chat_id=chat_id,
-                                                  text='@{} теперь в <b>{}</b>'.format(pl.username, chat.title),
-                                                  parse_mode='HTML')
+                if chat.chat_type == ChatType.SQUAD and pl.squad is not None and \
+                        not self.data.player_has_rights(player, pl.squad):
+                    self.message_manager.send_message(chat_id=chat_id,
+                                                      text='@{} уже состоит в отряде <b>{}</b>'.format(pl.username, chat.title),
+                                                      parse_mode='HTML')
+                else:
+                    self.data.add_player_to_chat(pl, chat)
+                    self.message_manager.send_message(chat_id=chat_id,
+                                                      text='@{} теперь в <b>{}</b>'.format(pl.username, chat.title),
+                                                      parse_mode='HTML')
             return True
         return True
 
@@ -431,6 +491,28 @@ class Bot:
         if not self.data.player_is_admin(player):
             self.message_manager.send_message(chat_id=chat_id, text='Увы ты не админ...')
             return True
+
+        if mod == 'bands':
+            text = '\n'.join(
+                ['<b>{}</b> aka <b>{}</b>'.format(ch.title, ch.name) for ch in self.data.get_all_chats() if
+                 ch.chat_type == ChatType.Babd])
+            self.message_manager.send_split(text, chat_id)
+            return True
+        elif mod == 'chats':
+            text = 'Отряды:\n  {}Банды:\n  {}:  Просто чаты:  \n{}'.format(
+                '\n'.join(
+                    ['<b>{}</b> aka <b>{}</b>'.format(ch.title, ch.name) for ch in self.data.get_all_chats() if
+                     ch.chat_type == ChatType.SQUAD]),
+                '  \n'.join(
+                    ['<b>{}</b> aka <b>{}</b>'.format(ch.title, ch.name) for ch in self.data.get_all_chats() if
+                     ch.chat_type == ChatType.BAND]),
+                '  \n'.join(
+                    ['<b>{}</b> aka <b>{}</b>'.format(ch.title, ch.name) for ch in self.data.get_all_chats() if
+                     ch.chat_type != ChatType.CHAT])
+            )
+            self.message_manager.send_split(text, chat_id)
+            return True
+
         if mod == 'commanders':
             text = 'Админы:\n  {}\nКомандиры:\n  {}'.format(
                 '\n  '.join(['@' + pl.username for pl in self.data.all_admins()]),
@@ -492,7 +574,7 @@ class Bot:
             result.sort(reverse=True)
             player_res = player.karma
             title = '<b>Топ кармы</b>'
-        elif not mod or mod in ('all', 'usernames'):
+        elif not mod or mod in ('all', 'usernames', 'u'):
             result = [(pl.stats.sum(), pl) for pl in players]
             result.sort(reverse=True)
             player_res = player.stats.sum()
@@ -514,7 +596,7 @@ class Bot:
             result.append((ind, player.nic, player.username, player_res))
         text = title + '\n'
         lines = []
-        if 'usernames' not in parse_result.command.modifiers:
+        if 'usernames' not in parse_result.command.modifiers and 'u' not in parse_result.command.modifiers:
             lines = ['{})<a href="t.me/{}">{}</a>: <b>{}</b>'.format(r[0], r[2], r[1], r[3]) for r in result]
             if len(result) > 5:
                 lines.insert(5, '\n')

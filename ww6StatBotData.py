@@ -78,6 +78,12 @@ class DataBox:
             if player in chat.members:
                 chat.members.remove(player)
 
+    def update_player(self, player:Player):
+        self.sql_manager.update_user(player)
+
+    def update_stats(self, player:Player):
+        self.sql_manager.update_stats(player)
+
     def add_chat(self, chat):
         if chat.name in self._names:
             raise ValueError('Name already in use')

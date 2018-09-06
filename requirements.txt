@@ -1,0 +1,6 @@
+python-telegram-bot
+pyyaml
+pysocks
+pytils
+sphinx
+guzzle_sphinx_theme
