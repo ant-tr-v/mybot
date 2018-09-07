@@ -60,6 +60,8 @@ class Bot:
         cur.execute('CREATE TABLE IF NOT EXISTS admins (id INTEGER)')
         cur.execute('CREATE TABLE IF NOT EXISTS raids (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS building (id INTEGER, time TEXT)')
+        cur.execute('CREATE TABLE IF NOT EXISTS msg_null (id INTEGER, time TEXT)')
+        cur.execute('CREATE TABLE IF NOT EXISTS points (id INTEGER, time TEXT, type TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS blacklist (id INTEGER)')
         cur.execute('CREATE TABLE IF NOT EXISTS triggers (trigger TEXT, chat TEXT, text TEXT)')
         cur.execute(
@@ -73,6 +75,8 @@ class Bot:
         self.raids = set((r[0], r[1]) for r in cur.fetchall())
         cur.execute("SELECT * FROM building")
         self.building = set((r[0], r[1]) for r in cur.fetchall())
+        cur.execute("SELECT * FROM msg_null")  # TODO in refactoring - merge buildig with msg_null and specify msg_type as third argumebt
+        self._msg_null = set((r[0], r[1]) for r in cur.fetchall())
         self.usersbyname = {}
         self.masters = {}
         self.users = {}
@@ -198,6 +202,26 @@ class Bot:
                     'password': proxy_config['password']
                 }
             }
+
+    def save_point(self, msg:telega.Message, point_type, cur: sql.Cursor, conn: sql.Connection):
+        if not msg.forward_from:
+            return False
+        res = (msg.from_user.id, msg.forward_date.isoformat(' ', 'seconds'), point_type)
+        self._msg_null.add(res)
+        cur.execute('INSERT into points(id, time, type) values(?, ?, ?)', res)
+        conn.commit()
+        return True
+
+    def null_msg(self, msg:telega.Message, cur: sql.Cursor, conn: sql.Connection):
+        if not msg.forward_from:
+            return False
+        res = (msg.from_user.id, msg.forward_date.isoformat(' ', 'seconds'))
+        if res in self._msg_null:
+            return False
+        self._msg_null.add(res)
+        cur.execute('INSERT into msg_null(id, time) values(?, ?)', res)
+        conn.commit()
+        return True
 
     def handle_start(self, bot, update):
         message = update.message
@@ -734,6 +758,69 @@ class Bot:
                     self.message_manager.bot.forward_message(chat_id=squad, from_chat_id=chat_from.id, message_id=message.message_id)
                 except:
                     pass
+
+    def handle_pve(self, parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
+        if not parse.pve or parse.message.chat.type != 'private':
+            return
+        pve = parse.pve
+        uid = parse.message.from_user.id
+        pl = self.users[uid]
+        chat_id = parse.message.chat_id
+        text = ""
+        if not self.null_msg(parse.message, cur, conn):
+            text = "Я уже видел этот форвард"
+        elif parse.timedelta > datetime.timedelta(days=1):
+            text = "Слишком поздно, у тебя лишь 2 минуты, чтобы отправить мне результаты боя"
+        else:
+            text = 'PVE <a href="t.me/{}">{}</a> с <b>{}</b>\n{}км\nПолученный урон:{}\n' \
+               'Нанесеный урон:{}\nПобеда:{}'.format(pl.username, pl.nic, pve.mob_nic, parse.info_line.distance,
+                                                     str(pve.damage_taken),str(pve.damage_dealt),
+                                                     'Да' if pve.win else 'Нет')
+            if not parse.loot:
+                text += '\nНо данжи не принимаются'
+            elif pve.win:
+                self.save_point(parse.message, 'PVE', cur, conn)
+                text += '\nЗасчитан бой'
+
+        self.message_manager.send_message(text=text, chat_id=chat_id, parse_mode='HTML', disable_web_page_preview=True)
+
+    def handle_pvp(self, parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
+        if not parse.pvp or parse.message.chat.type != 'private':
+            return
+        pvp = parse.pvp
+        uid = parse.message.from_user.id
+        pl = self.users[uid]
+        chat_id = parse.message.chat_id
+        text = ""
+        if not self.null_msg(parse.message, cur, conn):
+            text = "Я уже видел этот форвард"
+        elif parse.timedelta > datetime.timedelta(days=1):
+            text = "Слишком поздно, у тебя лишь 2 минуты, чтобы отправить мне результаты боя"
+        else:
+            text = 'PVP <b>{0}</b> с <b>{1}</b>\n<b>{0}</b> выбил: {2}\n' \
+               '<b>{1}</b> выбил: {3}\n\nПобеда:<b>{4}</b>'.format(pvp.nics[0], pvp.nics[1], str(pvp.dd[pvp.nics[0]]),
+                                                                              str(pvp.dd[pvp.nics[1]]), pvp.win)
+            if pvp.win == pl.nic:
+                self.save_point(parse.message, 'PVP', cur, conn)
+                text += '\nЗасчитан бой'
+
+        self.message_manager.send_message(text=text, chat_id=chat_id, parse_mode='HTML', disable_web_page_preview=True)
+
+    def handle_loot(self, parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
+        if not parse.loot or not self.null_msg(parse.message, cur, conn):
+            return
+        # chat_id = parse.message.chat_id
+        # loot = parse.loot
+        # text = 'LOOT\n'+'\n'.join(['{}: {}шт'.format(k, v) for k, v in loot.items()])
+        # self.message_manager.send_message(text=text, chat_id=chat_id, parse_mode='HTML', disable_web_page_preview=True)
+
+    def handle_loss(self,  parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
+        if not parse.loss or not self.null_msg(parse.message, cur, conn):
+            return
+        # chat_id = parse.message.chat_id
+        # loss = parse.loss
+        # text = 'LOST\n'+'\n'.join(['{}: {}шт'.format(k, v) for k, v in loss.items()])
+        # self.message_manager.send_message(text=text, chat_id=chat_id, parse_mode='HTML', disable_web_page_preview=True)
 
     def handle_building(self, cur: sql.Cursor, conn: sql.Connection, parse: parser.ParseResult):
         if not parse.building:
@@ -1396,6 +1483,24 @@ class Bot:
                 self.message_manager.send_message(chat_id=chat_id,
                                                   text="Мы ещё не знакомы. Скинь мне форвард своих статов))",
                                                   reply_markup=telega.ReplyKeyboardRemove())
+            return
+
+        processed_forward = False
+        if parse_result.pve is not None:
+            self.handle_pve(parse_result, cur, conn)
+            processed_forward = True
+        elif parse_result.pvp is not None:
+            self.handle_pvp(parse_result, cur, conn)
+            processed_forward = True
+        elif parse_result.loot:
+            self.handle_loot(parse_result, cur, conn)
+            processed_forward = True
+        elif parse_result.loss:
+            self.handle_loss(parse_result, cur, conn)
+            processed_forward = True
+
+
+        if processed_forward:
             return
         if parse_result.command:
             self.handle_command(cur, conn, parse_result)
