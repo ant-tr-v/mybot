@@ -824,7 +824,7 @@ class Bot:
         text = ""
         if not self.null_msg(parse.message, cur, conn):
             text = "Я уже видел этот форвард"
-        elif parse.timedelta > datetime.timedelta(days=1):
+        elif parse.timedelta > datetime.timedelta(minutes=2):
             text = "Слишком поздно, у тебя лишь 2 минуты, чтобы отправить мне результаты боя"
         else:
             text = 'PVE <a href="t.me/{}">{}</a> с <b>{}</b>\n{}км\nПолученный урон:{}\n' \
@@ -849,7 +849,7 @@ class Bot:
         text = ""
         if not self.null_msg(parse.message, cur, conn):
             text = "Я уже видел этот форвард"
-        elif parse.timedelta > datetime.timedelta(days=1):
+        elif parse.timedelta > datetime.timedelta(minutes=2):
             text = "Слишком поздно, у тебя лишь 2 минуты, чтобы отправить мне результаты боя"
         else:
             text = 'PVP <b>{0}</b> с <b>{1}</b>\n<b>{0}</b> выбил: {2}\n' \
