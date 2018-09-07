@@ -5,6 +5,7 @@ __version__ = "0.0.0"
 
 import datetime
 import logging
+import os
 import re
 import sqlite3 as sql
 import sys
@@ -753,11 +754,65 @@ class Bot:
     def handle_post(self, message: telega.Message):
         chat_from = message.chat
         if chat_from.username and chat_from.username.lower() == 'greatwar':
+            text = self.parse_raid_result(message.date, message.text)
             for squad in self.squadids.values():
                 try:
-                    self.message_manager.bot.forward_message(chat_id=squad, from_chat_id=chat_from.id, message_id=message.message_id)
+                    self.message_manager.send_message(chat_id=squad, text=text, parse_mode='HTML')
                 except:
                     pass
+    
+    def parse_raid_result(self, raid_datetime, message_text):
+        locations = {
+            'Старая фабрика': ('📦', 5),
+            'Завод "Ядер-Кола"': ('🕳', 9),
+            'Тюрьма': ('💊', 12),
+            'Склады': ('🍗', 16),
+            'Датацентр': ('🔹', 20),
+            'Госпиталь': ('❤️', 24),
+            'Завод "Электрон"': ('💡', 28),
+            'Офисное здание': ('💾', 32),
+            'Иридиевая шахта': ('🔩', 38),
+            'Склад металла': ('🔗', 46)
+        }
+        # List of fractions to preserve given order if results equal
+        fractions = [
+            '⚙️Убежище 6',
+            '👨‍🎤Головорезы',
+            '⚙️Убежище 4',
+            '💣Мегатонна'
+        ]
+
+        post_regex = re.compile(r"✅(.+)\nЗаняли (.+)!")
+        raid_parse_result = post_regex.findall(message_text)
+        raid_result = {fraction: [] for fraction in fractions}
+        for location, fraction in raid_parse_result:
+            if fraction not in raid_result:
+                raid_result[fraction] = []
+            if location in locations:
+                raid_result[fraction].append('{}{}'.format(*locations[location]))
+            else: # in case of new raid locations in game update
+                raid_result[fraction].append(location)
+        
+        # Sort by locations count but preserve given in `fractions` order if location counters are same
+        sorter = lambda x: (fractions.index(x[0])/10 if x[0] in fractions else 0) - len(x[1])
+        raid_result = sorted(raid_result.items(), key=sorter)
+
+        text = '#итогирейда {} Мск\n\n'.format(raid_datetime.strftime('%d.%m.%Y %H:%M'))
+        for fraction, result in raid_result:
+            if len(result) > 4:
+                result.insert(4, '\n  ')
+            text += '<b>{} +{}</b>\n   {}\n'.format(fraction, len(result)*15, ' '.join(result))
+        
+        return text
+
+    def handle_post_forward(self, update: telega.Update):
+        message = update.message
+        chat = update.effective_chat
+
+        text = self.parse_raid_result(message.forward_date, message.text)
+
+        self.message_manager.send_message(chat_id=chat.id, text=text, parse_mode='HTML')
+
 
     def handle_pve(self, parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
         if not parse.pve or parse.message.chat.type != 'private':
@@ -1391,6 +1446,9 @@ class Bot:
         if update.channel_post:
             self.handle_post(update.channel_post)
             return
+        if update.message and update.message.forward_from_chat and update.message.forward_from_chat.username.lower() == 'greatwar':
+            self.handle_post_forward(update)
+            return
         message = update.message
         chat_id = message.chat_id
         user = message.from_user
@@ -1900,7 +1958,8 @@ def set_stderr_debug_logger():
 
 
 if __name__ == "__main__":
-    # set_stderr_debug_logger()
+    if os.getenv('DEBUG'):
+        set_stderr_debug_logger()
 
     stat_bot = Bot()
     stat_bot.start()
