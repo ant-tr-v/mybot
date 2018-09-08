@@ -56,13 +56,42 @@ class Profile:
             self.nic, self.fraction, self.location = match.group('nic', 'fraction', 'location')
             self.nic = self.nic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             hp, hp_now, hunger, attack, armor, power, accuracy, oratory, agility, stamina, stamina_now, distance = \
-                [int(x) for x in match.group('hp', 'hp_now', 'hunger', 'attack', 'armor', 'power', 'accuracy', 'oratory',
-                                             'agility', 'stamina', 'stamina_now', 'distance')]
+                [int(x) for x in
+                 match.group('hp', 'hp_now', 'hunger', 'attack', 'armor', 'power', 'accuracy', 'oratory',
+                             'agility', 'stamina', 'stamina_now', 'distance')]
             self.hp_now, self.stamina_now, self.distance = hp_now, stamina_now, distance
             self.stats = PlayerStat()
             self.stats.hp, self.stats.stamina, self.stats.agility, self.stats.oratory, self.stats.accuracy, \
             self.stats.power, self.stats.attack, self.stats.deff = hp, stamina, agility, oratory, accuracy, power, \
                                                                    attack, armor
+
+
+class InfoLine:
+    def __init__(self, match=None):
+        self.hp_now = None
+        self.stamina_now = None
+        self.hunger = None
+        self.distance = None
+        if match:
+            self.hp_now, self.stamina_now, self.hunger, self.distance = \
+                [int(x) for x in match.group('hp_now', 'stamina_now', 'hunger', 'distance')]
+
+
+class PVP:
+    def __init__(self):
+        self.nics = []
+        self.dd = {}
+        self.win = None
+
+
+class PVE:
+    def __init__(self):
+        self.damage_dealt = []
+        self.damage_taken = []
+        self.win = None
+        self.mob_nic = None
+        self.dunge = None
+
 
 class ParseResult:
     def __init__(self):
@@ -74,6 +103,11 @@ class ParseResult:
         self.command = None
         self.building = None
         self.profile = None
+        self.info_line = None
+        self.loot = None
+        self.loss = None
+        self.pvp = None
+        self.pve = None
 
 
 class Parser:
@@ -107,12 +141,110 @@ class Parser:
             r'[^\d]+(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[^\d]+👣(?P<distance>[\d]+)\n'
             r'├🔥(?P<location>[^\n]+)')
 
+        self.re_info_line = re.compile(r'❤️(?P<hp_now>-?\d+)/(?P<hp>\d+)\s*🍗(?P<hunger>\d+)%\s*'
+                                          r'🔋(?P<stamina_now>\d+)/(?P<stamina>\d+)\s*👣(?P<distance>\d+)км')
+
+        self.re_pve = re.compile(r'Сражение с\s*(?P<mob>.*)')
+        self.re_pve_win = re.compile('Ты одержал победу!')
+        self.re_pve_dt = re.compile('💔(-?\d+)')
+        self.re_pve_dd = re.compile('💥(-?\d+)')
+
+        self.re_loot_caps = re.compile(r'\n\s*(Ты заработал:|Получено крышек:|Найдено крышек:)\s*🕳(\d+)')
+        self.re_loot_mats = re.compile(r'\n\s*(Получено материалов:|Получено:|Собрано материалов:)\s*📦(\d+)')
+        self.re_loot_other = re.compile(r'\n\s*Получено:\s*([^📦].*)')
+        self.re_loot_mult = re.compile(r'\s*х?(\d+)\s*$')
+
+        self.re_loss_caps = re.compile(r'(\n\s*Потеряно крышек:|Ты потерял:)\s*🕳(\d+)')
+        self.re_loss_mats = re.compile(r'(\n\s*Потеряно материалов:|Проебано:)\s*📦(\d+)')
+        self.re_loss_dead = re.compile(r'\n\s*Потеряно:\s*🕳(\d+)\s*и\s*📦(\d+)')
+
+        self.re_enemy = re.compile(r'нашивка: \"(⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\"')
+        self.re_friend = re.compile(r'знакомый:\n(.*) из "(⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)!"')
+        self.re_maniak = re.compile(r'Это (.*) из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)')
+
+        self.re_pvp = re.compile(r'(?P<nic1>.*)из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\s*VS.\s*'
+                                 r'(?P<nic2>.*)из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\s*FIGHT!')
+        self.re_pvp_line = re.compile(r'❤\S+(.*)\(💥(\d+)\)')
+
+
+    def _parse_info_line(self, message: telega.Message, pr: ParseResult):
+        match = self.re_info_line.search(message.text)
+        if match:
+            pr.info_line = InfoLine(match)
+
+    def _parse_pve(self, message: telega.Message, pr: ParseResult):
+        """
+        should be called only after _parse_info_line
+        """
+        if pr.info_line is None:
+            return
+        match = self.re_pve.search(message.text)
+        if match:
+
+            pr.pve = PVE()
+            pr.pve.mob_nic = match.group('mob')
+            pr.pve.mob_nic = pr.pve.mob_nic.strip()
+            pr.pve.win = self.re_pve_win.search(message.text) is not None
+            pr.pve.damage_dealt = [int(m.group(1)) for m in self.re_pve_dd.finditer(message.text)]
+            pr.pve.damage_taken = [-int(m.group(1)) for m in self.re_pve_dt.finditer(message.text)]
+
+    def _parse_loot(self, message: telega.Message, pr: ParseResult):
+        pr.loot = {}
+        pr.loss = {}
+        caps = sum([int(m.group(2)) for m in self.re_loot_caps.finditer(message.text)])
+        mats = sum([int(m.group(2)) for m in self.re_loot_mats.finditer(message.text)])
+        caps_loss = sum([int(m.group(2)) for m in self.re_loss_caps.finditer(message.text)])
+        mats_loss = sum([int(m.group(2)) for m in self.re_loss_mats.finditer(message.text)])
+        dead_match = self.re_loss_dead.search(message.text)
+        if dead_match:
+            caps_loss += int(dead_match.group(1))
+            mats_loss += int(dead_match.group(2))
+
+        if caps:
+            pr.loot['🕳'] = caps
+        if mats:
+            pr.loot['📦'] = mats
+        if caps_loss:
+            pr.loss['🕳'] = caps_loss
+        if mats_loss:
+            pr.loss['📦'] = mats_loss
+
+        for m in self.re_loot_other.finditer(message.text):
+            loot = m.group(1)
+            m_x = self.re_loot_mult.search(loot)
+            k = 1
+            if m_x:
+                loot = loot[:m_x.start()]
+                k = int(m_x.group(1))
+            loot = loot.strip()
+            if loot in pr.loot.keys():
+                pr.loot[loot] += k
+            else:
+                pr.loot[loot] = k
+
+    def _parse_pvp(self, message: telega.Message, pr: ParseResult):
+        match = self.re_pvp.search(message.text)
+        if match:
+            pr.pvp = PVP()
+            pr.pvp.nics = [s.strip() for s in  match.group('nic1', 'nic2')]
+            pr.pvp.dd = {x: [] for x in pr.pvp.nics}
+            last = None
+            for line in self.re_pvp_line.finditer(message.text):
+                text = line.group(1).strip()
+                dmg = int(line.group(2))
+                pl = 0
+                if text.find(pr.pvp.nics[1]) == 0:
+                    pl = 1
+                last = pr.pvp.nics[pl]
+                pr.pvp.dd[last].append(dmg)
+            pr.pvp.win = last
+
+
     def _parse_forward(self, message: telega.Message, pr: ParseResult):
         match = self.re_profile.search(message.text) or self.re_profile_short.search(message.text)
         if match:
             pr.profile = Profile(match)
             pr.profile.stats.time = message.forward_date
-
 
     def _parse_raid(self, message: telega.Message, pr: ParseResult):
         text = message.text
@@ -166,9 +298,13 @@ class Parser:
         self._parse_command(msg, res)
         res.timedelta = datetime.datetime.now() - msg.forward_date if (msg.forward_from is not None) else 0
         if (msg.forward_from is not None) and (msg.forward_from.id == self.WASTELAND_CHAT):
+            self._parse_info_line(msg, res)
             self._parse_forward(msg, res)
             self._parse_raid(msg, res)
             self._parse_build(msg, res)
+            self._parse_pve(msg, res)
+            self._parse_loot(msg, res)
+            self._parse_pvp(msg, res)
 
             # if res.building:
             #     self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res.building))
