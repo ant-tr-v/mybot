@@ -64,6 +64,7 @@ class Bot:
         cur.execute('CREATE TABLE IF NOT EXISTS msg_null (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS points (id INTEGER, time TEXT, type TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS blacklist (id INTEGER)')
+        cur.execute('CREATE TABLE IF NOT EXISTS titles (user_id INTEGER, titles_json TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS triggers (trigger TEXT, chat TEXT, text TEXT)')
         cur.execute(
             'CREATE TABLE IF NOT EXISTS settings (id REFERENCES users(id) ON DELETE CASCADE, sex TEXT, keyboard INT, raidnotes INT)')
@@ -160,12 +161,10 @@ class Bot:
         self.updater.dispatcher.add_handler(massage_handler)
         self.updater.dispatcher.add_handler(join_handler)
         self.updater.dispatcher.add_handler(callback_handler)
-        self.updater.start_polling(clean=True)
 
         print("admins:", self.admins)
         print("squadnames:", self.squadnames.keys())
         print("users", self.usersbyname.keys())
-        self.updater.idle()
 
     def configure(self):
         f = open(self.CONFIG_PATH)
@@ -203,6 +202,7 @@ class Bot:
                     'password': proxy_config['password']
                 }
             }
+        f.close()
 
     def save_point(self, msg:telega.Message, point_type, cur: sql.Cursor, conn: sql.Connection):
         if not msg.forward_from:
@@ -403,6 +403,8 @@ class Bot:
         player = self.users[id]
         ps = player.get_stats(n - 1)
         s = "<b>" + player.nic + "</b>\n"
+        if player.titles:
+            s += '\n'.join(player.titles) + '\n\n'
         if player.squad != "":
             s += "Отряд: <b>" + self.squadnames[player.squad] + "</b>\n"
         if ps is None:
@@ -632,6 +634,9 @@ class Bot:
                 start = text.find(word)
                 break
 
+        if start < 0:
+            start = 0
+
         # Is there any squads?
         if not sqs:
             if not allow_empty_squads:
@@ -655,9 +660,11 @@ class Bot:
             self.message_manager.send_message(chat_id=self.users[user.id].chatid, text=message_text)
             return None, None
 
-        if not text[start:] and not default_message:
+        if (not text[start:] or (start == 0)) and not default_message:
             self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Но что же мне им написать?")
             return None, None
+        if start == 0:
+            return sqs, default_message
         return sqs, text[start:] or default_message
 
     def user_has_squad_permission(self, user: telega.User, squad: str) -> bool:
@@ -749,7 +756,7 @@ class Bot:
             res += 'Игроки из других отрядов:\n\t' + '\n\t'.join(difsq) + '\n\t'
         if average:
             res += 'Игроки из этого отряда:\n\t' + '\n\t'.join(average) + '\n\t'
-            self.message_manager.send_message(chat_id=chat_id, text=res, parse_mode='HTML')
+        self.message_manager.send_split(res, chat_id, 50)
 
     def handle_post(self, message: telega.Message):
         chat_from = message.chat
@@ -1143,6 +1150,48 @@ class Bot:
                                               text="Пользователя @" + player.username + " теперь зовут <b>" + player.nic + "</b>",
                                               parse_mode='HTML')
             return
+        elif command == "title":
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Нужно больше власти")
+            title, ids = self.demand_ids(message, user=user, all=False)
+            if not ids or not title:
+                return
+            for uid in ids:
+                pl = self.users[uid]
+                pl.add_title(cur, title)
+                conn.commit()
+                text = '@{} присвоено звание «{}»'.format(pl.username, title)
+                self.message_manager.send_message(chat_id=chat_id, text=text)
+            return
+        elif command == "title_del":
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Нужно больше власти")
+            title, ids = self.demand_ids(message, user=user, all=False)
+            if not ids or not title:
+                return
+            for uid in ids:
+                pl = self.users[uid]
+                pl.del_title(cur, title)
+                conn.commit()
+                text = '@{} больше не {}'.format(pl.username, title)
+                self.message_manager.send_message(chat_id=chat_id, text=text)
+            return
+        elif command == "title_clear":
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Нужно больше власти")
+            _, ids = self.demand_ids(message, user=user, all=True)
+            if not ids:
+                return
+            for uid in ids:
+                pl = self.users[uid]
+                pl.clear_titles(cur)
+                conn.commit()
+                text = 'У @{} отобраны все звания. Оно того стоило?'.format(pl.username)
+                self.message_manager.send_message(chat_id=chat_id, text=text)
+            return
         elif command == "ban":
             if user.id not in self.admins:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
@@ -1262,7 +1311,7 @@ class Bot:
             self.list_squads(chat_id, (user.id in self.admins))
         elif command == 'whois':
             self.who_is(chat_id, text)
-        elif command == 'whospy':
+        elif command == 'whospy' or command == 'who_spy':
             self.who_spy(chat_id, user, message)
         elif command == 'raidson':
             m = re.match(r'^[\S]+[\s]+((?P<g>[\S]+)[\s]+)?(?P<n>[\d]+)', text)
@@ -1376,6 +1425,8 @@ class Bot:
                 sq = "из отряда <b>{}</b>".format(
                     self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
                 text = "Это <b>{0}</b> {1}".format(pl.nic, sq)
+                if pl.titles:
+                    text = '{}\n{}'.format(text, ', '.join(pl.titles))
                 self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
                                                   disable_web_page_preview=True)
         elif command == 'who_is_at_command':
@@ -1383,11 +1434,11 @@ class Bot:
                 self.message_manager.send_message(chat_id=chat_id,
                                                   text="А ты смелый! Просить меня о таком...")
                 return
-            text = "<b>Админы</b>\n\t{}\n<b>Командиры</b>\n\t{}".format(
+            text = "<b>Админы</b>\n\t{}\n\n<b>Командиры</b>\n\t{}".format(
                 "\n\t".join(["@" + self.users[uid].username for uid in self.admins]),
-                "\n\t".join(["@{} <b>{}</b>".format(self.users[uid].username, " ".join(self.masters[uid]))
+                "\n\t".join(["{} <b>{}</b>".format('@{}'.format(self.users[uid].username) if uid in self.users else '#{}'.format(uid), " ".join(self.masters[uid]))
                              for uid in self.masters.keys()]))
-            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            self.message_manager.send_split(text, chat_id, 50)
         elif command == 'when_raid':
             now = datetime.datetime.now()
             raid_h = ((int(now.hour) + 7) // 8) * 8 + 1
@@ -1440,7 +1491,15 @@ class Bot:
                                                   text="Неизвестная команда... Сам придумал?")
 
     def start(self):
-        self.updater.start_polling()
+        self.updater.start_polling(clean=True)
+        self.updater.idle()
+    
+    def stop(self):
+        self.updater.stop()
+        self.message_manager.stop()
+        if self.notificator:
+            self.notificator.stop()
+        self.timer.stop()
 
     def handle_massage(self, bot, update: telega.Update):
         if update.channel_post:

@@ -19,7 +19,7 @@ class MessageManager:
 
     def __del__(self):
         try:
-            self._msg_queue.stop()
+            self.stop()
         except:
             pass
 
@@ -70,6 +70,13 @@ class MessageManager:
             self._updates.clear()
         for up in ups:
             self._update_msg(*up[0], **up[1])
+    
+    def stop(self):
+        self._msg_queue.stop()
+        if hasattr(self._timer, 'stop'):
+            self._timer.stop()
+        if hasattr(self._timer, 'cancel'):
+            self._timer.cancel()
 
     @mq.queuedmessage
     def _update_msg(self, *args, **kwargs):
@@ -108,7 +115,7 @@ class Timer:
 
     def stop(self):
         with self._lock:
-            goone = False
+            self._goone = False
             self._thread.join()
 
     def delete(self, ind):
