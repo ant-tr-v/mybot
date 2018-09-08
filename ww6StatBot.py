@@ -1434,11 +1434,11 @@ class Bot:
                 self.message_manager.send_message(chat_id=chat_id,
                                                   text="А ты смелый! Просить меня о таком...")
                 return
-            text = "<b>Админы</b>\n\t{}\n<b>Командиры</b>\n\t{}".format(
+            text = "<b>Админы</b>\n\t{}\n\n<b>Командиры</b>\n\t{}".format(
                 "\n\t".join(["@" + self.users[uid].username for uid in self.admins]),
-                "\n\t".join(["@{} <b>{}</b>".format(self.users[uid].username, " ".join(self.masters[uid]))
+                "\n\t".join(["{} <b>{}</b>".format('@{}'.format(self.users[uid].username) if uid in self.users else '#{}'.format(uid), " ".join(self.masters[uid]))
                              for uid in self.masters.keys()]))
-            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+            self.message_manager.send_split(text, chat_id, 50)
         elif command == 'when_raid':
             now = datetime.datetime.now()
             raid_h = ((int(now.hour) + 7) // 8) * 8 + 1
