@@ -168,7 +168,7 @@ class Bot:
             else:
                 return
 
-        # known user with neц nic
+        # known user with new nic
         elif pl.nic != parse_result.profile.nic:
             if parse_result.timedelta > datetime.timedelta(minutes=2):
                 text = "🤔 Раньше ты играл под другим ником.\nМожешь отправить <b>свежий</b> профиль?\n" \
@@ -239,7 +239,39 @@ class Bot:
             self.message_manager.send_message(chat_id=chat_id, text='Я еще не знаком с ' + ', '.join(unknown))
         return True
 
-    def _info(self, f, player: Player, parse_result: Parser.ParseResult) -> bool:
+    def _rename(self, player: Player, parse_result: Parser.ParseResult) -> bool:
+        mod = parse_result.command.modifier
+        chat_id = parse_result.message.chat_id
+        if mod not in ('player', 'chat', None):
+            return False
+        # /rename_chat
+        if parse_result.command.modifier == 'chat':
+            chat, text = self.data.one_chat_by_name(parse_result.command.argument)
+            if chat is None:
+                self.message_manager.send_message(text='Не знаю что это за чат', chat_id=chat_id)
+                return True
+            if not self.data.player_has_rights(player, chat):
+                self.message_manager.send_message(text='Тебе это делать нельзя', chat_id=chat_id)
+                return True
+            chat.title = text
+            self.data.update_chat(chat)
+            self.message_manager.send_message(text='Теперь <b>{}</b> называется <b>{}</b>'.format(chat.name, chat.title), chat_id=chat_id)
+            return True
+        # /rename_player /rename
+        pl, text = self.data.one_player_by_name(parse_result.command.argument)
+        if pl is None:
+            self.message_manager.send_message(text='Не знаю этого человека', chat_id=chat_id)
+            return True
+        if not self.data.player_has_rights(player, player.squad):
+            self.message_manager.send_message(text='Тебе это делать нельзя', chat_id=chat_id)
+            return True
+        pl.nic = text
+        self.data.update_player(player)
+        self.message_manager.send_message(text='@{} теперь зовут {}'.format(pl.nic, pl.username),
+                                          chat_id=chat_id, parse_mode='HTML')
+        return True
+
+    def _info(self, player: Player, parse_result: Parser.ParseResult) -> bool:
         mod = parse_result.command.modifier
         chat_id = parse_result.message.chat_id
         if mod not in ('player', 'chat', None):

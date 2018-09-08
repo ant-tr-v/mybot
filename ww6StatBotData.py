@@ -222,6 +222,30 @@ class DataBox:
     def player_has_rights(self, player: Player, squad: Chat=None) -> bool:
         return self.player_is_admin(player) or (squad and player in squad.masters)
 
+    def one_player_by_name(self, _str: str, offset=0):
+        """
+        returns player (if found) and the rest of the string
+        """
+        if not _str:
+            return None, ''
+        name = re.compile('@?(\S+)\s*')
+
+        i = left = 0
+        m = name.match(_str[left:])
+        while m:
+            username = m.group(1).lower()
+            if i >= offset:
+                pl = self._players_by_username.get(username)
+                if pl:
+                    left += len(m.group(0))
+                    return pl, _str[left:]
+                else:
+                    return None, _str[left:]
+
+            i += 1
+            left += len(m.group(0))
+        return None, ''
+
     def players_by_username(self, _str: str, offset=0, parse_all=True):
         """
         if parse_all=True returns set of players and list of unknown usernames
@@ -248,6 +272,31 @@ class DataBox:
             left += len(m.group(0))
             m = name.match(_str[left:])
         return res, negative
+
+    def one_chat_by_name(self,  _str: str, offset=0,  chat_type=ChatType.CHAT):
+        """
+        returns chat (if found) and the rest of the string
+        """
+        if not _str:
+            return None, ''
+        name = re.compile('(\S+)\s*')
+        src = {ChatType.CHAT: self._chats, ChatType.SQUAD: self._squads, ChatType.BAND: self._bands}[
+            chat_type]
+        i = left = 0
+        m = name.match(_str[left:])
+        while m:
+            chat_name = m.group(1).lower()
+            if i >= offset:
+                ch = src.get(chat_name)
+                if ch:
+                    left += len(m.group(0))
+                    return ch, _str[left:]
+                else:
+                    return None, _str[left:]
+
+            i += 1
+            left += len(m.group(0))
+        return None, ''
 
     def chats_by_name(self, _str: str, offset=0, parse_all=True, chat_type=ChatType.CHAT):
         """
