@@ -1,5 +1,6 @@
-import sqlite3 as sql
 import datetime
+import json
+import sqlite3 as sql
 from enum import Enum
 
 
@@ -148,6 +149,8 @@ class PlayerSettings:
 
 
 class Player:
+    titles = []
+
     class KeyboardType(Enum):
         NONE = -1
         DEFAULT = 0
@@ -155,7 +158,7 @@ class Player:
         STATS = 2
         SETTINGS = 3
 
-    def __init__(self, cur: sql.Cursor, setings=(None, -1, "", "", "", [None, None, None, None, None])):
+    def __init__(self, cur:sql.Cursor, setings=(None, -1, "", "", "", [None, None, None, None, None])):
         self.id, self.chatid, self.username, self.nic, self.squad, sids = setings
         if self.squad is None:
             self.squad = ""
@@ -167,6 +170,41 @@ class Player:
         self.stats = [PlayerStat(cur, i) if i is not None else None for i in sids]
         self.keyboard = self.KeyboardType.DEFAULT
         self.settings = PlayerSettings(cur, self.id)
+        self.titles = self.get_titles(cur)
+    
+    def get_titles(self, cur) -> list:
+        cur.execute("SELECT titles_json FROM titles WHERE user_id=?", (self.id,))
+        result = cur.fetchone()
+        if result:
+            return json.loads(result[0])
+        return []
+
+    def add_title(self, cur, title):
+        if not self.titles:
+            query = "INSERT INTO titles(titles_json, user_id) VALUES(?, ?)"
+        else:
+            query = "UPDATE titles SET titles_json = ? WHERE user_id=?"
+
+        self.titles.append(title)
+        try:
+            cur.execute(query, (json.dumps(self.titles), self.id))
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
+
+    def del_title(self, cur, title):
+        if title in self.titles:
+            self.titles.remove(title)
+            try:
+                cur.execute("UPDATE titles SET titles_json = ? WHERE user_id=?", (json.dumps(self.titles), self.id))
+            except sql.Error as e:
+                print("Sql error occurred:", e.args[0])
+    
+    def clear_titles(self, cur):
+        self.titles = []
+        try:
+            cur.execute("DELETE FROM titles WHERE user_id=?", (self.id,))
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
 
     def get_stats(self, n):
         return self.stats[n]

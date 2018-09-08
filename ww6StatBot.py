@@ -62,6 +62,7 @@ class Bot:
         cur.execute('CREATE TABLE IF NOT EXISTS raids (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS building (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS blacklist (id INTEGER)')
+        cur.execute('CREATE TABLE IF NOT EXISTS titles (user_id INTEGER, titles_json TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS triggers (trigger TEXT, chat TEXT, text TEXT)')
         cur.execute(
             'CREATE TABLE IF NOT EXISTS settings (id REFERENCES users(id) ON DELETE CASCADE, sex TEXT, keyboard INT, raidnotes INT)')
@@ -378,6 +379,8 @@ class Bot:
         player = self.users[id]
         ps = player.get_stats(n - 1)
         s = "<b>" + player.nic + "</b>\n"
+        if player.titles:
+            s += '\n'.join(player.titles) + '\n\n'
         if player.squad != "":
             s += "Отряд: <b>" + self.squadnames[player.squad] + "</b>\n"
         if ps is None:
@@ -1060,6 +1063,48 @@ class Bot:
                                               text="Пользователя @" + player.username + " теперь зовут <b>" + player.nic + "</b>",
                                               parse_mode='HTML')
             return
+        elif command == "title":
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Нужно больше власти")
+            title, ids = self.demand_ids(message, user=user, all=False)
+            if not ids or not title:
+                return
+            for uid in ids:
+                pl = self.users[uid]
+                pl.add_title(cur, title)
+                conn.commit()
+                text = '@{} присвоено звание «{}»'.format(pl.username, title)
+                self.message_manager.send_message(chat_id=chat_id, text=text)
+            return
+        elif command == "title_del":
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Нужно больше власти")
+            title, ids = self.demand_ids(message, user=user, all=False)
+            if not ids or not title:
+                return
+            for uid in ids:
+                pl = self.users[uid]
+                pl.del_title(cur, title)
+                conn.commit()
+                text = '@{} больше не {}'.format(pl.username, title)
+                self.message_manager.send_message(chat_id=chat_id, text=text)
+            return
+        elif command == "title_clear":
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Нужно больше власти")
+            _, ids = self.demand_ids(message, user=user, all=True)
+            if not ids:
+                return
+            for uid in ids:
+                pl = self.users[uid]
+                pl.clear_titles(cur)
+                conn.commit()
+                text = 'У @{} отобраны все звания. Оно того стоило?'.format(pl.username)
+                self.message_manager.send_message(chat_id=chat_id, text=text)
+            return
         elif command == "ban":
             if user.id not in self.admins:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
@@ -1293,6 +1338,8 @@ class Bot:
                 sq = "из отряда <b>{}</b>".format(
                     self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
                 text = "Это <b>{0}</b> {1}".format(pl.nic, sq)
+                if pl.titles:
+                    text = '{}\n{}'.format(text, ', '.join(pl.titles))
                 self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
                                                   disable_web_page_preview=True)
         elif command == 'who_is_at_command':
