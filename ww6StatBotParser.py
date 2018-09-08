@@ -93,6 +93,12 @@ class PVE:
         self.dunge = None
 
 
+class Meeting:
+    def __init__(self):
+        self.fraction = None
+        self.nic = None
+
+
 class ParseResult:
     def __init__(self):
         self.message = None
@@ -108,6 +114,8 @@ class ParseResult:
         self.loss = None
         self.pvp = None
         self.pve = None
+        self.meeting = None
+        self.getto = None
 
 
 class Parser:
@@ -158,9 +166,11 @@ class Parser:
         self.re_loss_mats = re.compile(r'(\n\s*Потеряно материалов:|Проебано:)\s*📦(\d+)')
         self.re_loss_dead = re.compile(r'\n\s*Потеряно:\s*🕳(\d+)\s*и\s*📦(\d+)')
 
-        self.re_enemy = re.compile(r'нашивка: \"(⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\"')
-        self.re_friend = re.compile(r'знакомый:\n(.*) из "(⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)!"')
-        self.re_maniak = re.compile(r'Это (.*) из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)')
+        self.re_enemy = re.compile(r'нашивка: \"(?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\"')
+        self.re_friend = re.compile(r'знакомый:\n(?P<nic>.*) из "(?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)!"')
+        self.re_maniak = re.compile(r'\nЭто (?P<nic>.*) из (?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)')
+        self.re_player_in_brackets = re.compile(r'(?P<nic>.*)\((?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\)')
+        self.re_getto = re.compile(r'Игроки в белом гетто')
 
         self.re_pvp = re.compile(r'(?P<nic1>.*)из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\s*VS.\s*'
                                  r'(?P<nic2>.*)из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\s*FIGHT!')
@@ -168,34 +178,62 @@ class Parser:
 
 
     def _parse_info_line(self, message: telega.Message, pr: ParseResult):
-        match = self.re_info_line.search(message.text)
+        match = self.re_info_line.search(message.text or '')
         if match:
             pr.info_line = InfoLine(match)
+
+    def _parse_getto(self, message: telega.Message, pr: ParseResult):
+        text = message.text or ''
+        if not self.re_getto.match(text):
+            return
+        pr.getto = []
+        for m in self.re_player_in_brackets.finditer(text):
+            met = Meeting()
+            met.nic = m.group('nic').strip()
+            met.fraction = m.group('fraction')
+            pr.getto.append(met)
+
+    def _parse_meeting(self, message: telega.Message, pr: ParseResult):
+        text = message.text or ''
+        m = self.re_friend.search(text) or self.re_maniak.search(text)
+        if not m and message.caption:
+            m =self.re_player_in_brackets.search(message.caption)
+        if m:
+            pr.meeting = Meeting()
+            pr.meeting.nic = m.group('nic').strip()
+            pr.meeting.fraction = m.group('fraction')
+        else:
+            m = self.re_enemy.search(text)
+            if m:
+                pr.meeting = Meeting()
+                pr.meeting.fraction = m.group('fraction')
 
     def _parse_pve(self, message: telega.Message, pr: ParseResult):
         """
         should be called only after _parse_info_line
         """
+        text = message.text or ''
         if pr.info_line is None:
             return
-        match = self.re_pve.search(message.text)
+        match = self.re_pve.search(text)
         if match:
 
             pr.pve = PVE()
             pr.pve.mob_nic = match.group('mob')
             pr.pve.mob_nic = pr.pve.mob_nic.strip()
-            pr.pve.win = self.re_pve_win.search(message.text) is not None
-            pr.pve.damage_dealt = [int(m.group(1)) for m in self.re_pve_dd.finditer(message.text)]
-            pr.pve.damage_taken = [-int(m.group(1)) for m in self.re_pve_dt.finditer(message.text)]
+            pr.pve.win = self.re_pve_win.search(text) is not None
+            pr.pve.damage_dealt = [int(m.group(1)) for m in self.re_pve_dd.finditer(text)]
+            pr.pve.damage_taken = [-int(m.group(1)) for m in self.re_pve_dt.finditer(text)]
 
     def _parse_loot(self, message: telega.Message, pr: ParseResult):
         pr.loot = {}
         pr.loss = {}
-        caps = sum([int(m.group(2)) for m in self.re_loot_caps.finditer(message.text)])
-        mats = sum([int(m.group(2)) for m in self.re_loot_mats.finditer(message.text)])
-        caps_loss = sum([int(m.group(2)) for m in self.re_loss_caps.finditer(message.text)])
-        mats_loss = sum([int(m.group(2)) for m in self.re_loss_mats.finditer(message.text)])
-        dead_match = self.re_loss_dead.search(message.text)
+        text = message.text or ''
+        caps = sum([int(m.group(2)) for m in self.re_loot_caps.finditer(text)])
+        mats = sum([int(m.group(2)) for m in self.re_loot_mats.finditer(text)])
+        caps_loss = sum([int(m.group(2)) for m in self.re_loss_caps.finditer(text)])
+        mats_loss = sum([int(m.group(2)) for m in self.re_loss_mats.finditer(text)])
+        dead_match = self.re_loss_dead.search(text)
         if dead_match:
             caps_loss += int(dead_match.group(1))
             mats_loss += int(dead_match.group(2))
@@ -209,7 +247,7 @@ class Parser:
         if mats_loss:
             pr.loss['📦'] = mats_loss
 
-        for m in self.re_loot_other.finditer(message.text):
+        for m in self.re_loot_other.finditer(text):
             loot = m.group(1)
             m_x = self.re_loot_mult.search(loot)
             k = 1
@@ -223,13 +261,14 @@ class Parser:
                 pr.loot[loot] = k
 
     def _parse_pvp(self, message: telega.Message, pr: ParseResult):
-        match = self.re_pvp.search(message.text)
+        text = message.text or ''
+        match = self.re_pvp.search(text)
         if match:
             pr.pvp = PVP()
             pr.pvp.nics = [s.strip() for s in  match.group('nic1', 'nic2')]
             pr.pvp.dd = {x: [] for x in pr.pvp.nics}
             last = None
-            for line in self.re_pvp_line.finditer(message.text):
+            for line in self.re_pvp_line.finditer(text):
                 text = line.group(1).strip()
                 dmg = int(line.group(2))
                 pl = 0
@@ -241,13 +280,14 @@ class Parser:
 
 
     def _parse_forward(self, message: telega.Message, pr: ParseResult):
-        match = self.re_profile.search(message.text) or self.re_profile_short.search(message.text)
+        text = message.text or ''
+        match = self.re_profile.search(text) or self.re_profile_short.search(text)
         if match:
             pr.profile = Profile(match)
             pr.profile.stats.time = message.forward_date
 
     def _parse_raid(self, message: telega.Message, pr: ParseResult):
-        text = message.text
+        text = message.text or ''
         m = self.raid_format.search(text)
         if m:
             date = message.forward_date
@@ -282,12 +322,12 @@ class Parser:
                 return
 
     def _parse_command(self, msg: telega.Message, pres: ParseResult):
-        com = Command(self.re_command.match(msg.text))
+        com = Command(self.re_command.match(msg.text or ''))
         if com.command:
             pres.command = com
 
     def _parse_build(self, msg: telega.Message, pres: ParseResult):
-        bld = Build(self.re_trophy.match(msg.text))
+        bld = Build(self.re_trophy.match(msg.text or ''))
         if bld.what:
             pres.building = bld
 
@@ -305,6 +345,8 @@ class Parser:
             self._parse_pve(msg, res)
             self._parse_loot(msg, res)
             self._parse_pvp(msg, res)
+            self._parse_meeting(msg, res)
+            self._parse_getto(msg, res)
 
             # if res.building:
             #     self.message_manager.send_message(chat_id=msg.from_user.id, text=str(res.building))

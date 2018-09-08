@@ -200,7 +200,7 @@ class Player:
                 print("Sql error occurred:", e.args[0])
     
     def clear_titles(self, cur):
-        self.titles = {}
+        self.titles = set()
         try:
             cur.execute("DELETE FROM titles WHERE user_id=?", (self.id,))
         except sql.Error as e:

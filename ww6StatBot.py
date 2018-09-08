@@ -25,6 +25,13 @@ from ww6StatBotPlayer import Player, PlayerSettings, PlayerStat
 from ww6StatBotUtils import MessageManager, Timer
 
 
+class EnemyMeeting:
+    def __init__(self):
+        self.fraction = None
+        self.nic = None
+        self.time = None
+        self.distance = None
+
 class StatType(Enum):
     ALL = 1
     ATTACK = 2
@@ -38,6 +45,7 @@ class StatType(Enum):
 
 class Bot:
     CONFIG_PATH = 'bot.yml'
+    MEET_REPORT_CHAT = -1001250232822
 
     # Define dynamic config variables to avois pylint E1101 error
     # ('Instance of Bot has no ... member')
@@ -87,6 +95,7 @@ class Bot:
         self.squads_by_id = {}
         self.kick = {}
         self.viva_six = {}
+        self.meetings = {}
         self.apm = {}
         self.apm_window = 0
         self.keyboards = {}
@@ -154,11 +163,13 @@ class Bot:
             self.notificator = Notificator(self.users, self.updater.bot)
 
         massage_handler = MessageHandler(Filters.text | Filters.command, self.handle_massage)
+        photo_handler = MessageHandler(Filters.photo, self.handle_photo)
         start_handler = CommandHandler('start', self.handle_start)
         callback_handler = CallbackQueryHandler(callback=self.handle_callback)
         join_handler = MessageHandler(Filters.status_update.new_chat_members, self.handle_new_members)
         self.updater.dispatcher.add_handler(start_handler)
         self.updater.dispatcher.add_handler(massage_handler)
+        self.updater.dispatcher.add_handler(photo_handler)
         self.updater.dispatcher.add_handler(join_handler)
         self.updater.dispatcher.add_handler(callback_handler)
 
@@ -812,14 +823,116 @@ class Bot:
         
         return text
 
+    def clear_meetings(self, uid):
+        if self.meetings.get(uid):
+            del (self.meetings[uid])
+
+    def report_enemy_meeting(self, uid, meet:EnemyMeeting):
+        pl = self.users[uid]
+        text = 'На <b>{}</b>км замечен <b>{}</b> из <b>{}</b> в {}\nДокладывает <a href="t.me/{}">{}</a>'.format(
+            meet.distance, meet.nic, meet.fraction, meet.time.strftime('%H:%M'), pl.username, pl.nic
+        )
+        self.message_manager.send_message(chat_id=self.MEET_REPORT_CHAT, text=text, parse_mode='HTML',
+                                          disable_web_page_preview=True)
+
     def handle_post_forward(self, update: telega.Update):
         message = update.message
         chat = update.effective_chat
-
         text = self.parse_raid_result(message.forward_date, message.text)
-
         self.message_manager.send_message(chat_id=chat.id, text=text, parse_mode='HTML')
 
+    def handle_photo(self, bot, update: telega.Update):
+        message = update.message
+        chat_id = message.chat_id
+        conn = None
+        cur = None
+        try:
+            conn = sql.connect(self.db_path)
+            cur = conn.cursor()
+        except sql.Error as e:
+            print("Sql error occurred:", e.args[0])
+
+        parse = self._parser.run(message)
+        if parse.meeting is not None:
+            self.handle_meeting(parse, cur, conn)
+
+    def handle_meeting(self, parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
+        if parse.meeting is None or parse.message.chat.type != 'private':
+            return
+        meet = parse.meeting
+        chat_id = parse.message.chat_id
+        uid = parse.message.from_user.id
+        second_message = False
+
+        if parse.timedelta > datetime.timedelta(minutes=20*60):
+            self.message_manager.send_message(chat_id=chat_id,
+                                              text='Я принимаю форварды встреч только за последние 20мин')
+            return
+        if meet.fraction == '⚙️Убежище 6':
+            self.message_manager.send_message(chat_id=chat_id,
+                                              text='Рад за вас, но мне интереснее игроки других фракций')
+            return
+        if meet.nic:
+            meeting = EnemyMeeting()
+            meeting.nic, meeting.fraction = meet.nic, meet.fraction
+            if parse.info_line is not None:  # Maniac
+                meeting.distance = parse.info_line.distance
+            elif uid in self.meetings.keys():  # second message (with photo)
+                last_meet = self.meetings[uid]
+                self.clear_meetings(uid)
+                if abs(parse.message.forward_date - last_meet.time) > datetime.timedelta(seconds=30):
+                    self.message_manager.send_message(chat_id=chat_id,
+                                                      text='Сначала пришли сообшение о встречи с километра')
+                    return
+                meeting.distance = last_meet.distance
+                second_message = True
+            else:
+                self.message_manager.send_message(chat_id=chat_id,
+                                                  text='Сначала пришли сообшение о встречи с километра')
+                return
+            if not self.null_msg(parse.message, cur, conn) and not second_message:
+                self.message_manager.send_message(chat_id=chat_id,
+                                                  text='Я уже видел этот форвард')
+                return
+            self.save_point(parse.message, 'MEET', cur, conn)
+            meeting.time = parse.message.forward_date
+            self.report_enemy_meeting(uid, meeting)
+            self.message_manager.send_message(chat_id=chat_id,
+                                              text='Спасибо!\nЯ передал, куда нужно😉')
+        else:
+            if not self.null_msg(parse.message, cur, conn):
+                self.message_manager.send_message(chat_id=chat_id,
+                                                  text='Я уже видел этот форвард')
+                return
+            meeting = EnemyMeeting()
+            if parse.info_line is None:
+                self.message_manager.send_message(chat_id=chat_id, text='Что-то пошло не так')
+                return
+            meeting.distance = parse.info_line.distance
+            meeting.time = parse.message.forward_date
+            self.meetings[uid] = meeting
+            self.message_manager.send_message(chat_id=chat_id,
+                                              text='Спасибо!\nТеперь пришли форвард с фоткой')
+
+    def handle_getto(self, parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
+        if parse.getto is None or parse.message.chat.type != 'private':
+            return
+        chat_id = parse.message.chat_id
+        uid = parse.message.from_user.id
+        pl = self.users[uid]
+        if not self.null_msg(parse.message, cur, conn):
+            self.message_manager.send_message(chat_id=chat_id,
+                                              text='Я уже видел этот форвард')
+            return
+        text = '<a href="t.me/{}">{}</a> докладывает из гетто в {}:\n{}'.format(
+            pl.username, pl.nic, parse.message.forward_date.strftime('%H:%M'),
+            "\n".join(['<b>{}</b> из <b>{}</b>'.format(x.nic, x.fraction)
+                       for x in parse.getto if x.fraction != '⚙️Убежище 6'])
+        )
+        self.message_manager.send_message(chat_id=self.MEET_REPORT_CHAT, text=text, parse_mode='HTML',
+                                          disable_web_page_preview=True)
+        self.message_manager.send_message(chat_id=chat_id,
+                                          text='Спасибо!\nЯ передал, куда нужно😉')
 
     def handle_pve(self, parse: parser.ParseResult, cur: sql.Cursor, conn: sql.Connection):
         if not parse.pve or parse.message.chat.type != 'private':
@@ -1611,6 +1724,12 @@ class Bot:
             processed_forward = True
         elif parse_result.pvp is not None:
             self.handle_pvp(parse_result, cur, conn)
+            processed_forward = True
+        elif parse_result.meeting is not None:
+            self.handle_meeting(parse_result, cur, conn)
+            processed_forward = True
+        elif parse_result.getto is not None:
+            self.handle_getto(parse_result, cur, conn)
             processed_forward = True
         elif parse_result.loot:
             self.handle_loot(parse_result, cur, conn)
