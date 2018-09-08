@@ -756,7 +756,7 @@ class Bot:
             res += 'Игроки из других отрядов:\n\t' + '\n\t'.join(difsq) + '\n\t'
         if average:
             res += 'Игроки из этого отряда:\n\t' + '\n\t'.join(average) + '\n\t'
-            self.message_manager.send_message(chat_id=chat_id, text=res, parse_mode='HTML')
+        self.message_manager.send_split(res, chat_id, 50)
 
     def handle_post(self, message: telega.Message):
         chat_from = message.chat
@@ -1311,7 +1311,7 @@ class Bot:
             self.list_squads(chat_id, (user.id in self.admins))
         elif command == 'whois':
             self.who_is(chat_id, text)
-        elif command == 'whospy':
+        elif command == 'whospy' or command == 'who_spy':
             self.who_spy(chat_id, user, message)
         elif command == 'raidson':
             m = re.match(r'^[\S]+[\s]+((?P<g>[\S]+)[\s]+)?(?P<n>[\d]+)', text)
