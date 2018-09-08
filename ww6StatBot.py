@@ -864,7 +864,7 @@ class Bot:
         uid = parse.message.from_user.id
         second_message = False
 
-        if parse.timedelta > datetime.timedelta(minutes=20*60):
+        if parse.timedelta > datetime.timedelta(minutes=20):
             self.message_manager.send_message(chat_id=chat_id,
                                               text='Я принимаю форварды встреч только за последние 20мин')
             return
