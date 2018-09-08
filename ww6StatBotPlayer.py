@@ -172,12 +172,12 @@ class Player:
         self.settings = PlayerSettings(cur, self.id)
         self.titles = self.get_titles(cur)
     
-    def get_titles(self, cur) -> list:
+    def get_titles(self, cur) -> set:
         cur.execute("SELECT titles_json FROM titles WHERE user_id=?", (self.id,))
         result = cur.fetchone()
         if result:
-            return json.loads(result[0])
-        return []
+            return set(json.loads(result[0]))
+        return set()
 
     def add_title(self, cur, title):
         if not self.titles:
@@ -185,9 +185,9 @@ class Player:
         else:
             query = "UPDATE titles SET titles_json = ? WHERE user_id=?"
 
-        self.titles.append(title)
+        self.titles.add(title)
         try:
-            cur.execute(query, (json.dumps(self.titles), self.id))
+            cur.execute(query, (json.dumps(list(self.titles)), self.id))
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
 
@@ -195,12 +195,12 @@ class Player:
         if title in self.titles:
             self.titles.remove(title)
             try:
-                cur.execute("UPDATE titles SET titles_json = ? WHERE user_id=?", (json.dumps(self.titles), self.id))
+                cur.execute("UPDATE titles SET titles_json = ? WHERE user_id=?", (json.dumps(list(self.titles)), self.id))
             except sql.Error as e:
                 print("Sql error occurred:", e.args[0])
     
     def clear_titles(self, cur):
-        self.titles = []
+        self.titles = {}
         try:
             cur.execute("DELETE FROM titles WHERE user_id=?", (self.id,))
         except sql.Error as e:

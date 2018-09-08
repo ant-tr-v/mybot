@@ -1154,6 +1154,7 @@ class Bot:
             if user.id not in self.admins:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
                                                   text="Нужно больше власти")
+                return
             title, ids = self.demand_ids(message, user=user, all=False)
             if not ids or not title:
                 return
@@ -1168,6 +1169,7 @@ class Bot:
             if user.id not in self.admins:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
                                                   text="Нужно больше власти")
+                return
             title, ids = self.demand_ids(message, user=user, all=False)
             if not ids or not title:
                 return
@@ -1182,6 +1184,7 @@ class Bot:
             if user.id not in self.admins:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
                                                   text="Нужно больше власти")
+                return
             _, ids = self.demand_ids(message, user=user, all=True)
             if not ids:
                 return
