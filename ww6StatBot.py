@@ -415,7 +415,7 @@ class Bot:
         ps = player.get_stats(n - 1)
         s = "<b>" + player.nic + "</b>\n"
         if player.titles:
-            s += '\n'.join(player.titles) + '\n\n'
+            s += '\n'.join(['<code>' + tl + '</code>' for tl in player.titles]) + '\n\n'
         if player.squad != "":
             s += "Отряд: <b>" + self.squadnames[player.squad] + "</b>\n"
         if ps is None:
@@ -1308,6 +1308,26 @@ class Bot:
                 text = 'У @{} отобраны все звания. Оно того стоило?'.format(pl.username)
                 self.message_manager.send_message(chat_id=chat_id, text=text)
             return
+        elif command == "title_all":
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Нужно намного больше власти")
+                return
+            titles = {}
+            for pl in self.users.values():
+                for tl in pl.titles:
+                    if titles.get(tl):
+                        titles[tl].append("@"+pl.username)
+                    else:
+                        titles[tl] = ["@"+pl.username]
+
+            keys = list(titles.keys())
+            keys.sort()
+            text = "Присвоенные титулы:\n{}".format(
+                '\n'.join(['<b>{}</b>:\n  {}'.format(key, '\n  '.join(titles[key])) for key in keys])
+            )
+            self.message_manager.send_split(text, chat_id, 50)
+            return
         elif command == "ban":
             if user.id not in self.admins:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
@@ -1542,7 +1562,7 @@ class Bot:
                     self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
                 text = "Это <b>{0}</b> {1}".format(pl.nic, sq)
                 if pl.titles:
-                    text = '{}\n{}'.format(text, ', '.join(pl.titles))
+                    text = '{}\n{}'.format(text, '\n '.join(['<code>' + tl + '</code>' for tl in pl.titles]))
                 self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
                                                   disable_web_page_preview=True)
         elif command == 'who_is_at_command':
