@@ -1562,7 +1562,7 @@ class Bot:
                     self.squadnames[pl.squad]) if pl.squad in self.squadnames.keys() else ""
                 text = "Это <b>{0}</b> {1}".format(pl.nic, sq)
                 if pl.titles:
-                    text = '{}\n{}'.format(text, '\n '.join(['<code>' + tl + '</code>' for tl in pl.titles]))
+                    text = '{}\n{}'.format(text, '\n'.join(['<code>' + tl + '</code>' for tl in pl.titles]))
                 self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML',
                                                   disable_web_page_preview=True)
         elif command == 'who_is_at_command':
