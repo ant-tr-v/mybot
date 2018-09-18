@@ -46,6 +46,7 @@ class Profile:
     def __init__(self, match=None):
         self.nic = None
         self.fraction = None
+        self.crew = None
         self.stats = None
         self.hp_now = None
         self.stamina_now = None
@@ -53,7 +54,7 @@ class Profile:
         self.distance = None
         self.location = None
         if match:
-            self.nic, self.fraction, self.location = match.group('nic', 'fraction', 'location')
+            self.nic, self.fraction, self.crew, self.location = match.group('nic', 'fraction', 'crew', 'location')
             self.nic = self.nic.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             hp, hp_now, hunger, attack, armor, power, accuracy, oratory, agility, stamina, stamina_now, distance = \
                 [int(x) for x in
@@ -133,22 +134,25 @@ class Parser:
                                     r'Ты инвестировал в это исследование[\s]+(?P<trophy>[\d]+)[\s]+трофеев.[\s]+'
                                     r'Исследование:[\s]+(?P<what>[^\n]+)[\s]+Прогресс:[\s]+(?P<percent>[\d]+)')
         self.re_profile = re.compile(r'\n(?P<nic>[^\n]*)\n👥Фракция:[\s]*(?P<fraction>[^\n]*)[\s]+'
-                                     r'❤️Здоровье:[\s]+(?P<hp_now>[\d]+)/(?P<hp>[\d]+)[\s]+🍗Голод:[\s]+(?P<hunger>[\d]+)%'
-                                     r'[\s]+⚔️Урон:[\s]+(?P<attack>[\d]+)([\s]*\([^)]*\))?'
-                                     r'[\s]*🛡Броня:[\s]+(?P<armor>[\d]+)([\s]*\([^)]*\))?[\s]*'
+                                     r'(🤟Банда:\s+(?P<crew>[^\n]*)\s+)?'
+                                     r'❤️Здоровье:[\s]+(?P<hp_now>[\d]+)\/(?P<hp>[\d]+)[\s]+'
+                                     r'🍗Голод:[\s]+(?P<hunger>[\d]+)%[\s]+'
+                                     r'⚔️Урон:[\s]+(?P<attack>[\d]+)([\s]*\([^)]*\))?[\s]*'
+                                     r'🛡Броня:[\s]+(?P<armor>[\d]+)([\s]*\([^)]*\))?[\s]*'
                                      r'💪Сила:[\s]+(?P<power>[\d]+)([\s]*\([^)]*\))?[\s]*'
                                      r'🔫Меткость:[\s]+(?P<accuracy>[\d]+)([\s]*\([^)]*\))?[\s]*'
                                      r'🗣Харизма:[\s]+(?P<oratory>[\d]+)([\s]*\([^)]*\))?[\s]*'
                                      r'🤸🏽‍♂️Ловкость:[\s]+(?P<agility>[\d]+)([\s]*\([^)]*\))?[\s]*'
-                                     r'🔋Выносливость:[\s]+(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[\s]+'
+                                     r'🔋Выносливость:[\s]+(?P<stamina_now>[\d]+)\/(?P<stamina>[\d]+)[\s]+'
                                      r'🔥Локация:[\s]+(?P<location>[^\n]*)\n👣Расстояние:[\s]+(?P<distance>[\d]+)')
         self.re_profile_short = re.compile(
-            r'👤(?P<nic>[^\n]*)\n├(?P<fraction>[^\n]*)\n├❤️(?P<hp_now>[\d]+)/(?P<hp>[\d]+)'
-            r'[^\d]+(?P<hunger>[\d]+)[^\d]+(?P<attack>[\d]+)[^\d]+[^\d]*(?P<armor>[\d]+)'
-            r'[^\d]+(?P<power>[\d]+)[^\d]+[^\d]*(?P<accuracy>[\d]+)'
-            r'[^\d]+(?P<oratory>[\d]+)[^\d]+(?P<agility>[\d]+)'
-            r'[^\d]+(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[^\d]+👣(?P<distance>[\d]+)\n'
-            r'├🔥(?P<location>[^\n]+)')
+            r'👤(?P<nic>[^\n]*)\n├🤟 (?P<crew>[^\n]*)\n├(?P<fraction>[^\n]*)\n'
+            r'├❤️(?P<hp_now>[\d]+)\/(?P<hp>[\d]+)[^\d]+(?P<hunger>[\d]+)[^\d]+'
+            r'(?P<attack>[\d]+)[^\d]+[^\d]*(?P<armor>[\d]+)[^\d]+'
+            r'(?P<power>[\d]+)[^\d]+[^\d]*(?P<accuracy>[\d]+)[^\d]+'
+            r'(?P<oratory>[\d]+)[^\d]+(?P<agility>[\d]+)[^\d]+'
+            r'(?P<stamina_now>[\d]+)\/(?P<stamina>[\d]+)[^\d]+'
+            r'👣(?P<distance>[\d]+)\n├🔥(?P<location>[^\n]+)')
 
         self.re_info_line = re.compile(r'❤️(?P<hp_now>-?\d+)/(?P<hp>\d+)\s*🍗(?P<hunger>\d+)%\s*'
                                           r'🔋(?P<stamina_now>\d+)/(?P<stamina>\d+)\s*👣(?P<distance>\d+)км')
