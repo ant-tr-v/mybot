@@ -82,7 +82,7 @@ class Bot:
         cur.execute("SELECT * FROM blacklist")
         self.blacklist = set(r[0] for r in cur.fetchall())
         cur.execute("SELECT * FROM raids")
-        self.raids = set((r[0], r[1], r[2]) for r in cur.fetchall())
+        self.raids = set((r[0], r[1]) for r in cur.fetchall())
         cur.execute("SELECT * FROM building")
         self.building = set((r[0], r[1]) for r in cur.fetchall())
         cur.execute("SELECT * FROM msg_null")  # TODO in refactoring - merge buildig with msg_null and specify msg_type as third argumebt
@@ -1740,8 +1740,8 @@ class Bot:
             date = parse_result.raid_time
             km = parse_result.raid_loc
             # TODO make raid incrementation separated from stat update
-            if date and ((user.id, date, km) not in self.raids):
-                self.raids.add((user.id, date, km))
+            if date and ((user.id, date) not in self.raids):
+                self.raids.add((user.id, date))
                 ps.raids += 1
                 ps.update_raids(cur, user.id, date, km)
                 if player.squad in self.squadnames.keys():
