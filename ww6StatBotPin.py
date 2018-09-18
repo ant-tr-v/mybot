@@ -14,6 +14,9 @@ def power(player: Player):
     ps = player.stats[4]
     return ps.attack + ps.hp + ps.deff + ps.agility + 10
 
+"""
+ghosts are players that are not actually in pin, their uid is lower then 0 but equal to actual id 
+"""
 
 class PinOnlineKm:
     class PlayerStatus(IntEnum):
@@ -66,8 +69,7 @@ class PinOnlineKm:
 
     def clear(self):
         self.players_unconfirmed = {sq: {km: [] for km in self.ordered_kms} for sq in
-                                    self.squads.keys()}  # dictionary of
-        # ids stored for each squad
+                                    self.squads.keys()}  # dictionary of ids stored for each squad
         self.players_confirmed = {sq: {km: [] for km in self.ordered_kms} for sq in self.squads.keys()}
         self.players_skipping = {sq: [] for sq in self.squads.keys()}
         self.players_scared = {sq: [] for sq in self.squads.keys()}
@@ -84,14 +86,22 @@ class PinOnlineKm:
     def add(self, uid, km, squad, recount=True):
         if uid not in self.players.keys() or km not in self.ordered_kms or squad not in self.squads.keys():
             return True
-        if self.players[uid].squad != squad:
+        if self.players[uid].squad != squad and squad != 'spec':  # SpecOp SPECIAL
             self.message_manager.send_message(chat_id=uid, text="Пожалуйста, отмечайся в пине своего отряда")
             return True
         if uid in self.players_online.keys() and self.players_online[uid]['km'] == km \
                 and self.players_online[uid]['squad'] == squad:
             return False
         if uid in self.players_online.keys():
-            self.chats_to_update.add(self.players_online[uid]['squad'])
+            if squad != 'spec' or self.players_online[uid]['squad'] == 'spec':
+                self.chats_to_update.add(self.players_online[uid]['squad'])
+            else:
+                plo = self.players_online[uid]
+                self.players_online[-uid] = {'km': plo['km'], 'squad': plo['squad'], 'state': plo['state']}  # New ghost
+                self.users_to_add[-uid] = self.players_online[uid]
+        if squad != 'spec' and -uid in self.players_online.keys():
+            self.chats_to_update.add(self.players_online[-uid]['squad'])
+            del(self.players_online[-uid])  # No more ghost
         self.players_online[uid] = {'km': km, 'squad': squad, 'state': self.PlayerStatus.GOING}
         self.users_to_add[uid] = self.players_online[uid]
         if recount:
@@ -105,10 +115,28 @@ class PinOnlineKm:
             if uid in self.players_online.keys() and self.players_online[uid]['state'] == status:
                 self.delete(uid, self.players_online[uid]['squad'])
                 return True
-            self.delete(uid, squad, False)
-            self.players_online[uid] = {'km': self.ordered_kms[1], 'squad': squad, 'state': status}
-        elif uid not in self.players_online.keys():
+            if -uid in self.players_online.keys() and self.players_online[-uid]['state'] == status and\
+                    squad == self.players_online[-uid]['squad']:
+                self.delete(-uid, self.players_online[-uid]['squad'])
+                return True
+            if -uid in self.players_online.keys() and squad == self.players_online[-uid]['squad']:
+                self.delete(-uid, squad, False)
+                self.players_online[-uid] = {'km': self.ordered_kms[1], 'squad': squad, 'state': status}
+            else:
+                self.delete(uid, squad, False)
+                self.players_online[uid] = {'km': self.ordered_kms[1], 'squad': squad, 'state': status}
+        elif uid not in self.players_online.keys() and -uid not in self.players_online.keys():
             return False
+        elif -uid in self.players_online.keys():
+            if squad == self.players_online[-uid]['squad']:
+                self.players_online[-uid]['state'] = status
+                self.users_to_add[-uid] = self.players_online[-uid]
+                self.chats_to_update.add(squad)
+                self.recount()
+                self.update()
+                return True
+            else:
+                self.players_online[uid]['state'] = status
         else:
             self.players_online[uid]['state'] = status
         self.users_to_add[uid] = self.players_online[uid]
@@ -121,6 +149,9 @@ class PinOnlineKm:
         if uid in self.players_online.keys():
             squad = self.players_online[uid]['squad']
             del (self.players_online[uid])
+        if -uid in self.players_online.keys() and squad == self.players_online[-uid]['squad']:
+            squad = self.players_online[-uid]['squad']
+            del (self.players_online[-uid])
         if recount:
             self.recount()
             self.users_to_delete.add(uid)
@@ -164,21 +195,23 @@ class PinOnlineKm:
 
     def recount(self):
         self.clear()
-        for uid in list(self.players_online):
-            if uid not in self.players.keys():
+        for uid in list(self.players_online.keys()):
+            if uid not in self.players.keys() and -uid not in self.players.keys():
                 self.delete(uid, self.players_online[uid]['squad'], recount=False)
                 continue
             pl = self.players_online[uid]
             km, squad, state = pl['km'], pl['squad'], pl['state']
-            pw = power(self.players[uid])
+            pw = power(self.players[uid]) if uid > 0 else 0
             if state == self.PlayerStatus.GOING:
                 self.players_unconfirmed[squad][km].append(uid)
                 self.powers_on_km_unconfirmed[km] += pw
-                self.players_on_km_unconfirmed[km].append(uid)
+                if uid > 0:
+                    self.players_on_km_unconfirmed[km].append(uid)
             elif state == self.PlayerStatus.ONPLACE:
                 self.players_confirmed[squad][km].append(uid)
                 self.powers_on_km_confirmed[km] += pw
-                self.players_on_km_confirmed[km].append(uid)
+                if uid > 0:
+                    self.players_on_km_confirmed[km].append(uid)
             elif state == self.PlayerStatus.SKIPPING:
                 self.players_skipping[squad].append(uid)
             elif state == self.PlayerStatus.SCARED:
@@ -218,11 +251,12 @@ class PinOnlineKm:
         for km, uonkm in list(self.players_confirmed[squad].items()):
             for uid in list(uonkm):
                 if uid not in self.players.keys():
-                    self.delete(uid, squad, recount=False)
+                    if uid > 0:
+                        self.delete(uid, squad, recount=False)
                     continue
                 cpl += 1
                 tpl += 1
-                pl = self.players[uid]
+                pl = self.players[abs(uid)]
                 pw = power(pl)
                 cpw += pw
                 tpw += pw
@@ -231,7 +265,8 @@ class PinOnlineKm:
         for km, uonkm in list(self.players_unconfirmed[squad].items()):
             for uid in list(uonkm):
                 if uid not in self.players.keys():
-                    self.delete(uid, squad, recount=False)
+                    if uid > 0:
+                        self.delete(uid, squad, recount=False)
                     continue
                 tpl += 1
                 pl = self.players[uid]
@@ -249,13 +284,13 @@ class PinOnlineKm:
         s3 = "<b>Локации:</b>\n"
         for km in self.ordered_kms:
             s3 += "<b>{}км</b>({}/{}) [{}/{}] {} | {}\n".format(km, len(self.players_on_km_confirmed[km]),
-                                                                len(self.players_on_km_confirmed[km]) + len(
-                                                                    self.players_on_km_unconfirmed[km]),
+                                                                len(self.players_on_km_confirmed[km])
+                                                                + len(self.players_on_km_unconfirmed[km]),
                                                                 self.powers_on_km_confirmed[km],
                                                                 self.powers_on_km_confirmed[km] +
                                                                 self.powers_on_km_unconfirmed[km],
                                                                 " ".join(['@' + self.players[uid].username for uid in
-                                                                          self.players_on_km_confirmed[km]]),
+                                                                          self.players_on_km_confirmed[km]]) ,
                                                                 " ".join(['@' + self.players[uid].username for uid in
                                                                           self.players_on_km_unconfirmed[km]]))
         return s1, s2, s3
@@ -271,8 +306,12 @@ class PinOnlineKm:
         lines = []
         total = 0
         for km in self.ordered_kms:
-            c = ["@" + self.players[uid].username + "🏕️" for uid in list(self.players_confirmed[sq][km])]
-            u = ["@" + self.players[uid].username + "🐌" for uid in list(self.players_unconfirmed[sq][km])]
+            if sq != 'spec':
+                c = ["@" + self.players[abs(uid)].username + "🏕️" for uid in list(self.players_confirmed[sq][km])]
+                u = ["@" + self.players[abs(uid)].username + "🐌" for uid in list(self.players_unconfirmed[sq][km])]
+            else:
+                c = ["@" + self.players[uid].username + "🏕️" for uid in list(self.players_confirmed[sq][km]) if uid > 0]
+                u = ["@" + self.players[uid].username + "🐌" for uid in list(self.players_unconfirmed[sq][km]) if uid > 0]
             if c or u:
                 lines.append("<b>" + km + "км</b>(" + str(len(c) + len(u)) + ")" + " ".join(c) + " ".join(u))
                 total += len(c) + len(u)
@@ -280,10 +319,10 @@ class PinOnlineKm:
                 lines.append("<b>" + km + "км</b> (0) ---")
         if self.players_skipping[sq]:
             lines.append("\nЭти <i>оригиналы</i> решили, что могут не ходить на рейд:" + " ".join(
-                "@" + self.players[uid].username for uid in list(self.players_skipping[sq])))
+                "@" + self.players[abs(uid)].username for uid in list(self.players_skipping[sq])))
         if self.players_scared[sq]:
             lines.append("\nБоятся уходить так далеко от дома:" + " ".join(
-                "@" + self.players[uid].username for uid in list(self.players_scared[sq])))
+                "@" + self.players[abs(uid)].username for uid in list(self.players_scared[sq])))
         text = "#пинонлайн\n<b>{}</b>\n\nонлайн ({})\n{}".format(self.chat_messages[sq], total, "\n".join(lines))
         try:
             self.message_manager.update_msg(timeout=2, chat_id=self.squads[sq], message_id=self.messages[self.squads[sq]], text=text,
@@ -296,7 +335,6 @@ class PinOnlineKm:
         self.chats_to_update.clear()
         for sq in cpy:
             self.update_squad(sq)
-        markup = [[telega.InlineKeyboardButton(text="Закрыть пин", callback_data="offkm")]]
         text = list(self.text())
         for chat_id, msg_ids in self.copies.items():
             for i in range(len(msg_ids)):

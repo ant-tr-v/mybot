@@ -594,7 +594,10 @@ class Bot:
     def list_squads(self, chat_id, show_pin=False):
         text = ""
         for sqshort, sqname in self.squadnames.items():
-            text += "<b>" + sqname + "</b> aka <i>" + sqshort + "</i>"
+            if sqshort != 'spec' or show_pin:
+                text += "<b>" + sqname + "</b> aka <i>" + sqshort + "</i>"
+            else:
+                continue
             if show_pin:
                 if self.pinkm and sqshort in self.pinkm.chat_messages.keys():
                     text += " \t✅"
