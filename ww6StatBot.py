@@ -67,7 +67,7 @@ class Bot:
         cur.execute('CREATE TABLE IF NOT EXISTS squads (name TEXT, short TEXT, chatid INT)')
         cur.execute('CREATE TABLE IF NOT EXISTS masters (id INTEGER, name TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS admins (id INTEGER)')
-        cur.execute('CREATE TABLE IF NOT EXISTS raids (id INTEGER, time TEXT)')
+        cur.execute('CREATE TABLE IF NOT EXISTS raids (id INTEGER, time TEXT, km INTEGER)')
         cur.execute('CREATE TABLE IF NOT EXISTS building (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS msg_null (id INTEGER, time TEXT)')
         cur.execute('CREATE TABLE IF NOT EXISTS points (id INTEGER, time TEXT, type TEXT)')
@@ -82,7 +82,7 @@ class Bot:
         cur.execute("SELECT * FROM blacklist")
         self.blacklist = set(r[0] for r in cur.fetchall())
         cur.execute("SELECT * FROM raids")
-        self.raids = set((r[0], r[1]) for r in cur.fetchall())
+        self.raids = set((r[0], r[1], r[2]) for r in cur.fetchall())
         cur.execute("SELECT * FROM building")
         self.building = set((r[0], r[1]) for r in cur.fetchall())
         cur.execute("SELECT * FROM msg_null")  # TODO in refactoring - merge buildig with msg_null and specify msg_type as third argumebt
@@ -1485,6 +1485,32 @@ class Bot:
                       "\n".join(['{})<a href = "t.me/{}">{}</a> <b>{}</b>'
                                 .format(i + 1, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
             self.message_manager.send_split(msg, chat_id, 50)
+        elif command == 'onraid':
+            if user.id not in self.admins:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Да кто ты такой, чтобы просить меня о подобном?!")
+                return
+            now = datetime.datetime.now()
+            raid_h = ((int(now.hour) + 7) // 8) * 8 - 7
+            d = 0
+            while raid_h < 0:
+                raid_h += 24
+                d -= 1
+            ctime = (datetime.datetime(year=now.year, month=now.month, day=now.day, hour=raid_h)+datetime.timedelta(days= d)).isoformat(' ', 'seconds')
+            cur.execute(r'SELECT id, km, time FROM raids WHERE time = ?', (ctime,))
+            ordered_kms = [5, 9, 12, 16, 20, 24, 28, 32, 38, 46, -1]
+            km_lists = {km: [] for km in ordered_kms}
+            for uid, km, _ in cur.fetchall():
+                km_lists[km].append('@'+ self.users[uid].username if self.users.get(uid) else '#' + uid)
+            text = 'Расстановка сил на рейде <b>{}</b>:\n'.format(ctime)
+            for km in ordered_kms[:-1]:
+                 text += "<b>{}км</b>: {}: {}\n".format(
+                     km, len(km_lists[km]), ' '.join(km_lists[km])
+                )
+            text += "<b>Хз где, но молодцы</b>: {}: {}\n".format(
+                 len(km_lists[-1]), ' '.join(km_lists[-1])
+            )
+            self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
         elif command == 'whoisonraid':
             m = re.match(r'^[\S]+([\s]+(?P<g>[\S]+))?', text)
             if not m:
@@ -1712,14 +1738,15 @@ class Bot:
                 ps.raids = oldps.raids
                 ps.building = oldps.building
             date = parse_result.raid_time
+            km = parse_result.raid_loc
             # TODO make raid incrementation separated from stat update
-            if date and ((user.id, date) not in self.raids):
-                self.raids.add((user.id, date))
+            if date and ((user.id, date, km) not in self.raids):
+                self.raids.add((user.id, date, km))
                 ps.raids += 1
-                ps.update_raids(cur, user.id, date)
+                ps.update_raids(cur, user.id, date, km)
                 if player.squad in self.squadnames.keys():
                     personal = " отличился на рейде " if player.settings.sex != "female" else " отличилась на рейде "
-                    text = "<b>" + player.nic + "</b> aka @" + player.username + personal + parse_result.raid_text
+                    text = "<b>" + player.nic + "</b> aka @" + player.username + personal + date
                     text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                     call = lambda e, ca: self.message_manager.send_message(chat_id=player.chatid,
                                                                            text="Я не смог отправить сообщение в твой отряд\nЕсли хочешь - отправь его сам:\n\n" + text,

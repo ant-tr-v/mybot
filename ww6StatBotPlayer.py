@@ -61,11 +61,11 @@ class PlayerStat:
             print("Sql error occurred:", e.args[0])
             return -1
 
-    def update_raids(self, cur, raid_id=None, time=None):
+    def update_raids(self, cur, raid_id=None, time=None, km=None):
         try:
             cur.execute("""UPDATE userstats SET raids = ?  WHERE id=?""", (self.raids, self.id))
             if time is not None:
-                cur.execute("INSERT INTO raids(id, time) VALUES(?, ?)", (raid_id, time))
+                cur.execute("INSERT INTO raids(id, time, km) VALUES(?, ?, ?)", (raid_id, time, km))
         except sql.Error as e:
             print("Sql error occurred:", e.args[0])
             return -1

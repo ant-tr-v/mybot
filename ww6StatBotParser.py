@@ -105,6 +105,7 @@ class ParseResult:
         self.username = None
         self.raid_text = None
         self.raid_time = None
+        self.raid_loc = None
         self.timedelta = None
         self.command = None
         self.building = None
@@ -175,6 +176,26 @@ class Parser:
         self.re_pvp = re.compile(r'(?P<nic1>.*)из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\s*VS.\s*'
                                  r'(?P<nic2>.*)из (⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\s*FIGHT!')
         self.re_pvp_line = re.compile(r'❤\S+(.*)\(💥(\d+)\)')
+
+        self.re_raid_locs = [(re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*📦'), 5),
+                     (re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*🕳'), 9),
+                     (re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*🔹'), 20),
+                     (re.compile(r"🕳\s*\+\d+\s*📦\s*\+\d+\s*((❤️|❤)\s*\+\s*\d+,\s*)?Эффедрин"), 24),
+                     (re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*💡'), 28),
+                     (re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*💾'), 32),
+                     (re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*🔩'), 38),
+                     (re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*🔗'), 46)
+                     ]
+        self.re_raid_msg_default = re.compile(r'🕳\s*\+\d+\s*📦\s*\+\d+\s*(.*)')
+
+        self.food = {'Луковица', 'Помидор', 'Конфета', 'Булочка', 'Морковь', 'Человечина', 'Эдыгейский сыр',
+                     'Мясо белки', 'Собачатина', r'Абрик\*с', 'Сухари', 'Чипсы', 'Голубь', 'Сырое мясо', 'Мясо утки',
+                     'Хомячок', 'Красная слизь', 'Луковица', 'Сухофрукты', 'Молоко брамина', 'Вяленое мясо',
+                     'Тесто в мясе', 'Сахарные бомбы', 'Консервы', 'Радсмурф', 'Мутафрукт', 'Что-то тухлое',
+                     'Гнилой апельсин', 'Гнилое мясо', 'Не красная слизь'}
+        self.drugs = {'Холодное пиво', 'Виски', 'Бурбон', 'Абсент', 'Глюконавт', 'Психонавт', 'Ментаты', 'Психо',
+                      'Винт', 'Ультравинт', 'Скума'}
+
 
 
     def _parse_info_line(self, message: telega.Message, pr: ParseResult):
@@ -286,6 +307,24 @@ class Parser:
             pr.profile = Profile(match)
             pr.profile.stats.time = message.forward_date
 
+    def _parse_raid_msg(self, msg: str,  pr: ParseResult):
+        rkm = -1
+        for re_l, km in self.re_raid_locs:
+            if re_l.search(msg):
+                rkm = km
+                break
+        if rkm < 0:  # Special cases 12, 16
+            m = self.re_raid_msg_default.search(msg)
+            if m:
+                rest = m.group(1)
+                if any([re.match(val, rest) for val in self.food]):
+                    rkm = 16
+                elif any([re.match(val, rest) for val in self.drugs]):
+                    rkm = 12
+                pr.raid_loc = rkm if rkm > 0 else -1
+        else:
+            pr.raid_loc = rkm
+
     def _parse_raid(self, message: telega.Message, pr: ParseResult):
         text = message.text or ''
         m = self.raid_format.search(text)
@@ -316,7 +355,8 @@ class Parser:
                         ddate = datetime.datetime(ddate.year - 1, ddate.month, ddate.day, ddate.hour)
 
                 date = str(ddate).split('.')[0]
-                pr.raid_text = m.group('msg')
+                msg  = pr.raid_text = m.group('msg')
+                self._parse_raid_msg(msg, pr)
                 pr.raid_time = date
             except:
                 return
