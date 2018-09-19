@@ -798,7 +798,7 @@ class Bot:
         # List of fractions to preserve given order if results equal
         fractions = [
             '⚙️Убежище 6',
-            '👨‍🎤Головорезы',
+            '🔪Головорезы',
             '⚙️Убежище 4',
             '💣Мегатонна'
         ]
