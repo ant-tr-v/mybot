@@ -171,7 +171,7 @@ class Parser:
         self.re_loss_mats = re.compile(r'(\n\s*Потеряно материалов:|Проебано:)\s*📦(\d+)')
         self.re_loss_dead = re.compile(r'\n\s*Потеряно:\s*🕳(\d+)\s*и\s*📦(\d+)')
 
-        self.re_enemy = re.compile(r'нашивка: \"(?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\"')
+        self.re_enemy = re.compile(r'нашивка: (?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)')
         self.re_friend = re.compile(r'знакомый:\n(?P<nic>.*) из "(?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)!"')
         self.re_maniak = re.compile(r'\nЭто (?P<nic>.*) из (?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)')
         self.re_player_in_brackets = re.compile(r'(?P<nic>.*)\((?P<fraction>⚙️Убежище 4|⚙️Убежище 6|💣Мегатонна|👨‍🎤Головорезы)\)')

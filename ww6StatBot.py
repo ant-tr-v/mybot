@@ -20,7 +20,7 @@ from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
 
 import ww6StatBotParser as parser
 from ww6StatBotEvents import Notificator
-from ww6StatBotPin import PinOnlineKm
+from ww6StatBotPin import PinOnlineKm, power
 from ww6StatBotPlayer import Player, PlayerSettings, PlayerStat
 from ww6StatBotUtils import MessageManager, Timer
 
@@ -1486,29 +1486,46 @@ class Bot:
                                 .format(i + 1, raids[i][2], raids[i][1], raids[i][0]) for i in range(len(raids))])
             self.message_manager.send_split(msg, chat_id, 50)
         elif command == 'onraid':
-            if user.id not in self.admins:
-                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
-                                                  text="Да кто ты такой, чтобы просить меня о подобном?!")
+            m = re.match(r'^[\S]+([\s]+(?P<g>\D[\S]*))?([\s]+(?P<n>[\d]+))?', text)
+            if not m:
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Неверный формат команды")
                 return
+            sq = m.group('g')
+            if sq is None:
+                if user.id not in self.admins:
+                    self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Да кто ты такой, чтобы просить меня о подобном?!")
+                    return
+            elif not self.user_has_squad_permission(user, sq):
+                self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                  text="Недостаточно власти\nНужно больше власти")
+                return
+            n = int(m.group('n')) if m.group('n') else 1
+
             now = datetime.datetime.now()
-            raid_h = ((int(now.hour) + 7) // 8) * 8 - 7
+            raid_h = ((int(now.hour) + 7) // 8) * 8 - 8 * n + 1
             d = 0
             while raid_h < 0:
                 raid_h += 24
                 d -= 1
-            ctime = (datetime.datetime(year=now.year, month=now.month, day=now.day, hour=raid_h)+datetime.timedelta(days= d)).isoformat(' ', 'seconds')
+            ctime = (datetime.datetime(year=now.year, month=now.month, day=now.day, hour=raid_h) + datetime.timedelta(days=d)).isoformat(' ', 'seconds')
             cur.execute(r'SELECT id, km, time FROM raids WHERE time = ?', (ctime,))
             ordered_kms = [5, 9, 12, 16, 20, 24, 28, 32, 38, 46, -1]
             km_lists = {km: [] for km in ordered_kms}
+            km_pow = {km: 0 for km in ordered_kms}
             for uid, km, _ in cur.fetchall():
-                km_lists[km].append('@'+ self.users[uid].username if self.users.get(uid) else '#' + uid)
+                print(km_lists, sq, n)
+                if sq and uid in self.users and self.users[uid].squad == sq:
+                    km_lists[km].append('@' + self.users[uid].username)
+                elif sq is None:
+                    km_lists[km].append('@'+ self.users[uid].username if self.users.get(uid) else '#' + uid)
+                    km_pow[km] += power(self.users[uid]) if self.users.get(uid) else 0
             text = 'Расстановка сил на рейде <b>{}</b>:\n'.format(ctime)
             for km in ordered_kms[:-1]:
-                 text += "<b>{}км</b>: {}: {}\n".format(
-                     km, len(km_lists[km]), ' '.join(km_lists[km])
+                 text += "<b>{}км</b>:{} {}: {}\n".format(
+                      km, "[{}]".format(km_pow[km]) if km_pow[km] else "", len(km_lists[km]), ' '.join(km_lists[km])
                 )
-            text += "<b>Хз где, но молодцы</b>: {}: {}\n".format(
-                 len(km_lists[-1]), ' '.join(km_lists[-1])
+            text += "<b>Хз где, но молодцы</b>:{} {}: {}\n".format(
+                "[{}]".format(km_pow[-1]) if km_pow[-1] else "", len(km_lists[-1]), ' '.join(km_lists[-1])
             )
             self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
         elif command == 'whoisonraid':
