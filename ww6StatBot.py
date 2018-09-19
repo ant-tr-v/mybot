@@ -1513,7 +1513,6 @@ class Bot:
             km_lists = {km: [] for km in ordered_kms}
             km_pow = {km: 0 for km in ordered_kms}
             for uid, km, _ in cur.fetchall():
-                print(km_lists, sq, n)
                 if sq and uid in self.users and self.users[uid].squad == sq:
                     km_lists[km].append('@' + self.users[uid].username)
                 elif sq is None:
