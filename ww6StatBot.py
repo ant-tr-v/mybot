@@ -1446,6 +1446,8 @@ class Bot:
             self.viva_six[chat_id] += 1
         elif command.lower() == "ave_khans":
             self.message_manager.bot.sendSticker(chat_id=chat_id, sticker="CAADAgADAQADmXkHGX_hmMWBv9rRAg")
+        elif command.lower() == "ave_alkashi":
+            self.message_manager.bot.sendSticker(chat_id=chat_id, sticker="CAADAgADWwADmXkHGfZmAvHt54qSAg")
         elif command == 'squads':
             self.list_squads(chat_id, (user.id in self.admins))
         elif command == 'whois':
