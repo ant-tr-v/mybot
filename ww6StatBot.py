@@ -360,7 +360,7 @@ class Bot:
         self.message_manager.send_message(chat_id=chat_id,
                                           text="Создан отряд " + self.squadnames[short] + " aka " + short)
 
-    def trigger(self, trigger, chat):
+    def trigger(self, trigger, chat, player :Player):
         sq = self.squads_by_id.get(chat)
         text = ""
         trigger = trigger.lower()
@@ -368,6 +368,8 @@ class Bot:
             text = self.triggers[sq][trigger]
         elif trigger in self.triggers['all'].keys():
             text = self.triggers['all'][trigger]
+        elif player.squad and player.squad in self.triggers.keys() and trigger in self.triggers[player.squad].keys():
+            text = self.triggers[player.squad][trigger]
         if text:
             self.message_manager.send_message(chat_id=chat, text=text, parse_mode="HTML")
         return text
@@ -1666,7 +1668,7 @@ class Bot:
             conn.commit()
             self.message_manager.send_message(chat_id=chat_id, text="Удален тригер\n/{}".format(res),
                                               parse_mode="HTML")
-        elif self.trigger(command, chat_id):
+        elif self.trigger(command, chat_id, self.users[user.id]):
             pass
         else:
             if message.chat.type == "private":
@@ -1953,10 +1955,7 @@ class Bot:
                                           reply_markup=self.keyboards[player.keyboard])
 
     def guide(self, player: Player, chat_id=None):
-        text = "<b>FAQ по игре:</b> http://telegra.ph/FAQ-02-13-3\nОт @vladvertov\n\n" \
-               "<b>Гайд по подземельям: </b> http://telegra.ph/Gajd-po-podzemelyam-04-26\n" \
-               "От @Rey_wolf и @ICallThePolice\n\n<b>Гайд для новичка </b> " \
-               "http://telegra.ph/gajd-dlya-novichkov-po-Wastelands-18-ot-Quapiam-and-co-03-17\nОт @Quapiam"
+        text = "Много полезной информации можну узнать, введя команду /help"
         if chat_id is None:
             chat_id = player.chatid
         self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True,
