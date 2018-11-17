@@ -1651,7 +1651,7 @@ class Bot:
         elif command == 'all_triggers':
             tgs = []
             for sq, dic in self.triggers.items():
-                if not user.id in self.admins and sq != 'all' and sq != self.squads_by_id.get(chat_id):
+                if not user.id in self.admins and sq != 'all' and sq != self.squads_by_id.get(chat_id) and sq != self.users[user.id].squad:
                     continue
                 for tg in dic.keys():
                     tgs.append('/'+ tg + " (%s)" % sq)
