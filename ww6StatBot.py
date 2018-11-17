@@ -1955,7 +1955,7 @@ class Bot:
                                           reply_markup=self.keyboards[player.keyboard])
 
     def guide(self, player: Player, chat_id=None):
-        text = "Много полезной информации можну узнать, введя команду /help"
+        text = "Много полезной информации можно узнать, введя команду /help"
         if chat_id is None:
             chat_id = player.chatid
         self.message_manager.send_message(chat_id=chat_id, text=text, parse_mode='HTML', disable_web_page_preview=True,
