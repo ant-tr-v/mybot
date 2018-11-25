@@ -822,9 +822,10 @@ class Bot:
 
         text = '#итогирейда {} Мск\n\n'.format(raid_datetime.strftime('%d.%m.%Y %H:%M'))
         for fraction, result in raid_result:
+            points = 15 * len(result)
             if len(result) > 4:
                 result.insert(4, '\n  ')
-            text += '<b>{} +{}</b>\n   {}\n'.format(fraction, len(result)*15, ' '.join(result))
+            text += '<b>{} +{}</b>\n   {}\n'.format(fraction, points, ' '.join(result))
         
         return text
 
