@@ -17,12 +17,12 @@ import telegram as telega
 import yaml
 from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
                           MessageHandler, Updater)
-
 import ww6StatBotParser as parser
 from ww6StatBotEvents import Notificator
 from ww6StatBotPin import PinOnlineKm, power
 from ww6StatBotPlayer import Player, PlayerSettings, PlayerStat
 from ww6StatBotUtils import MessageManager, Timer
+from ww6StatBotNigtPin import NightPin
 
 
 class EnemyMeeting:
@@ -151,6 +151,7 @@ class Bot:
             token=self.tg_token, request_kwargs=self.tg_request_kwargs)
         self.timer = Timer()
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
+        self.night_pin = NightPin()
         self.pinkm = PinOnlineKm(self.squadids, self.users, self.message_manager, self.db_path,
                                  timer=self.timer, conn=conn)
         self._parser = parser.Parser(self.message_manager, self.tg_bot_name)
@@ -715,12 +716,16 @@ class Bot:
         start = -1
         split = text.split()
         i = 0
-        for word in split[offset:]:
-            name = word.strip('@').lower()
+        j = 0
+        for word in re.finditer("@?(\S+)\s*", text):
+            j += 1
+            if j <= offset:
+                continue
+            name = word.group(1)
             if name in self.usersbyname.keys():
                 ids.append(self.usersbyname[name])
             elif not all:
-                start = text.find(word)
+                start = word.start()
                 break
             else:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
@@ -1242,6 +1247,14 @@ class Bot:
                     self.message_manager.send_message(chat_id=self.squadids[sq], text=msg,
                                                       reply_markup=telega.ReplyKeyboardRemove())
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid, text="Ваш зов был услышан")
+        elif command == "echo-u":
+            text_msg, ids = self.demand_ids(message, user)
+            for uid in list(set(ids)):
+                pl = self.users[uid]
+                if not self.user_has_squad_permission(user, pl.squad):
+                    self.message_manager.send_message(chat_id=chat_id, text="Ты не можешь написать @{}\nТы ему не начальник".format(pl.username))
+                    continue
+                self.message_manager.send_message(chat_id=pl.id, text=text_msg)
         elif command == "pin":
             sqs, msg = self.demand_squads(text, user)
             if sqs:
@@ -1585,13 +1598,15 @@ class Bot:
                 return
             for squad in squad_list:
                 squad_messages = []
-                list_to_ping = []
+                list_to_ping = set()
                 for user in self.users.values():
                     if user.squad == squad and self.pinkm.player_status(user) == PinOnlineKm.PlayerStatus.UNKNOWN:
-                        list_to_ping.append('@' + user.username)
+                        list_to_ping.add('@' + user.username)
                         if len(list_to_ping) == 3:
                             squad_messages.append(" ".join(list_to_ping))
                             list_to_ping.clear()
+                if self.night_pin.active:
+                    list_to_ping -= set(self.night_pin.players_all)
                 if list_to_ping:
                     squad_messages.append(" ".join(list_to_ping))
                 if squad_messages:
