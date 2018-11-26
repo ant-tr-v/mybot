@@ -721,7 +721,7 @@ class Bot:
             j += 1
             if j <= offset:
                 continue
-            name = word.group(1)
+            name = word.group(1).lower()
             if name in self.usersbyname.keys():
                 ids.append(self.usersbyname[name])
             elif not all:
