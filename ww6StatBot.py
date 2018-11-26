@@ -1255,6 +1255,7 @@ class Bot:
                     self.message_manager.send_message(chat_id=chat_id, text="Ты не можешь написать @{}\nТы ему не начальник".format(pl.username))
                     continue
                 self.message_manager.send_message(chat_id=pl.id, text=text_msg)
+            self.message_manager.send_message(chat_id=user.id, text="Все! Я доставил)")
         elif command == "pin":
             sqs, msg = self.demand_squads(text, user)
             if sqs:
