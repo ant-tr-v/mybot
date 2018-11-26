@@ -1452,6 +1452,7 @@ class Bot:
             if self.pinkm is None:
                 return
             self.pinkm.copy_to(chat_id)
+
         elif command.lower() == "viva_six":
             if chat_id not in self.viva_six.keys():
                 self.viva_six[chat_id] = 0
