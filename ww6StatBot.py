@@ -151,7 +151,7 @@ class Bot:
             token=self.tg_token, request_kwargs=self.tg_request_kwargs)
         self.timer = Timer()
         self.message_manager = MessageManager(self.updater.bot, timer=self.timer)
-        self.night_pin = NightPin()
+        self.night_pin = NightPin(self.message_manager)
         self.pinkm = PinOnlineKm(self.squadids, self.users, self.message_manager, self.db_path,
                                  timer=self.timer, conn=conn)
         self._parser = parser.Parser(self.message_manager, self.tg_bot_name)
@@ -616,17 +616,18 @@ class Bot:
 
 
 
-    def echo(self, message, call_back_chat, squads=None, status: PinOnlineKm.PlayerStatus = None):
+    def echo(self, message, call_back_chat, squads=None, status: PinOnlineKm.PlayerStatus = None, list_of_players = None):
         """squads should be iterable, no rights are checked"""
         block_list = []
-        for pl in self.users.values():
+        pl_list = list_of_players or self.users.values()
+        for pl in pl_list:
             if (not squads or pl.squad in squads) and \
                     (status is None or (self.pinkm and self.pinkm.player_status(pl) == status)):
                 self.message_manager.send_message(chat_id=pl.chatid, callback=self._err_callback,
                                                   callbackargs=(block_list, pl),
-                                                  text=message)
+                                                  text=message, parse_mode='HTML')
 
-        self.message_manager.send_message(chat_id=call_back_chat, text="Ваш зов был услышан").result()
+        self.message_manager.send_message(chat_id=call_back_chat, text="Сообщения отправлены").result()
         if block_list:
             self.message_manager.send_message(chat_id=call_back_chat, text="Меня заблокировали:\n%s"
                                                                            % "".join(['\n@' + val for val in block_list]))
@@ -743,7 +744,7 @@ class Bot:
         if not ids and not allow_empty:
             self.message_manager.send_message(chat_id=self.users[user.id].chatid,
                                               text="Я не нашёл ни одного знакомого юзернейма")
-        return text[start:], ids
+        return text[start:] if start >= 0 else "", ids
 
     def who_spy(self, chat_id, user, msg):
         _, ids = self.demand_ids(msg, user, offset=2, all=True)
@@ -1034,10 +1035,10 @@ class Bot:
         chat_id = message.chat_id
         if not parse.command:
             return
-        command, name, argument, modifier = parse.command.command, parse.command.name, parse.command.argument, \
+        command, command_name, argument, modifier = parse.command.command, parse.command.name, parse.command.argument, \
                                             parse.command.modifier
         # TODO : rewrite all comands using argument rather than text
-        if name == 'stat' and not argument and not message.reply_to_message:
+        if command_name == 'stat' and not argument and not message.reply_to_message:
             n = 5
             if modifier.isdigit():
                 n = int(modifier)
@@ -1053,7 +1054,7 @@ class Bot:
                 self.message_manager.send_message(chat_id=user.id, text="Неверный формат команды")
                 return
             self.stat(user.id, chat_id, n)
-        elif name == 'stat':
+        elif command_name == 'stat':
             _, ids = self.demand_ids(message, user=user, all=True)
             n = 5
             if modifier.isdigit():
@@ -1065,7 +1066,7 @@ class Bot:
                                                            + self.users[uid].username + " тебе не доступна")
                     return
                 self.stat(uid, chat_id, n)
-        elif name == 'change':
+        elif command_name == 'change':
             n = 4
             player = self.users[user.id]
             if modifier.isdigit():
@@ -1082,7 +1083,7 @@ class Bot:
                 self.message_manager.send_message(chat_id=chat_id, text="Пришлёшь мне ещё один форвард твоих статов?")
                 return
             self.change(user.id, chat_id, n)
-        elif name == 'table':
+        elif command_name == 'table':
             _, ids = self.demand_ids(message, user=user, all=True, offset=1)
             N = 5
             if modifier.isdigit():
@@ -1120,7 +1121,7 @@ class Bot:
                                                            + self.users[uid].username + " тебе не доступна")
                     return
                 self.change(uid, chat_id, N)
-        elif name == 'save':
+        elif command_name == 'save':
             n = 5
             if modifier.isdigit():
                 n = int(modifier)
@@ -1210,7 +1211,7 @@ class Bot:
                                                             short] + "</b>"),
                                                   parse_mode='HTML')
             conn.commit()
-        elif name == 'echo':
+        elif command_name == 'echo':
             type = modifier
             if type:
                 type = type.strip()
@@ -1422,6 +1423,76 @@ class Bot:
                     self.message_manager.send_message(chat_id=chat_id,
                                                       text="Выкинуть @" + pl.username + " из чата не получилось")
             conn.commit()
+        elif command_name == 'npin':
+            if modifier == 'open' or modifier == 'add':
+                if user.id not in self.admins:
+                    self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                      text="Что-то не вижу я у тебя админки?\nГде потерял?")
+                    return
+                km, ids = self.demand_ids(message, user)
+                km = km.strip()
+                if modifier == 'open':
+                    if self.night_pin.active:
+                        self.message_manager.send_message(chat_id=chat_id, text="Сначала нужно закрвыть старый")
+                        return
+                    if not km.isdigit() or not ids:
+                        self.message_manager.send_message(
+                            chat_id=chat_id, text="Неверный формат команды\n<code>{}</code>\nНе число".format(km),
+                            parse_mode='HTML')
+                        return
+                    km = int(km)
+                    self.night_pin.open(km)
+                    self.message_manager.send_message(chat_id=chat_id, text="Ночной пин открыт")
+                elif km:
+                    self.message_manager.send_message(
+                        chat_id=chat_id, text="Неверный формат команды\n<code>{}</code>\nНе пусто".format(
+                                                          km), parse_mode='HTML')
+                    return
+                players = [self.users[uid] for uid in ids]
+                self.night_pin.add(players)
+                txt = self.night_pin.get_message()
+                self.echo(txt, user.id, list_of_players=players)
+            elif modifier == 'close':
+                if user.id not in self.admins:
+                    self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                      text="Что-то не вижу я у тебя админки?\nГде потерял?")
+                    return
+                if self.night_pin.active:
+                    self.night_pin.close()
+                    self.message_manager.send_message(chat_id=chat_id, text="Ночной пин закрыт")
+                else:
+                    self.message_manager.send_message(chat_id=chat_id, text="Ночной пин и не был открыт")
+            elif modifier == 'accept' or modifier == 'decline' or modifier == 'status':
+                if not self.night_pin.active:
+                    self.message_manager.send_message(chat_id=chat_id, text="Ночной пин еще не выдан")
+                    return
+                player = self.users[user.id]
+                if player in self.night_pin.players_all:
+                    if message.chat.type != "private":
+                        self.message_manager.send_message(chat_id=chat_id, text="Пины только в личных сообщениях")
+                        return
+                    if modifier == 'accept':
+                        self.night_pin.set_going(player)
+                        self.message_manager.send_message(
+                            chat_id=chat_id,
+                            text="Ты принял{} ночной пин на {} км".format('a' if player.settings.sex != "male" else "", self.night_pin.km))
+                    elif modifier == 'decline':
+                        self.night_pin.set_declined(player)
+                        self.message_manager.send_message(
+                            chat_id=chat_id,
+                            text="Ты отклонил{} ночной пин на {} км".format('a' if player.settings.sex != "male" else "",self.night_pin.km))
+                    elif modifier == 'status':
+                        txt = "Цель: <b>{}</b>\n{}".format(self.night_pin.text_km(), self.night_pin.player_status(player))
+                        self.message_manager.send_message(chat_id=chat_id, text=txt, parse_mode='HTML')
+                else:
+                    self.message_manager.send_message(chat_id=chat_id, text="Ночной пин для тебя не поступал")
+            elif modifier == 'masterpin':
+                if user.id not in self.admins:
+                    self.message_manager.send_message(chat_id=self.users[user.id].chatid,
+                                                      text="Что-то не вижу я у тебя админки?\nГде потерял?")
+                    return
+                self.night_pin.set_masterpin(chat_id)
+
         elif command == "pinonkm":
             if user.id not in self.admins:
                 self.message_manager.send_message(chat_id=self.users[user.id].chatid,
@@ -1603,12 +1674,11 @@ class Bot:
                 list_to_ping = set()
                 for user in self.users.values():
                     if user.squad == squad and self.pinkm.player_status(user) == PinOnlineKm.PlayerStatus.UNKNOWN:
-                        list_to_ping.add('@' + user.username)
+                        if user not in self.night_pin.players_all:
+                            list_to_ping.add('@' + user.username)
                         if len(list_to_ping) == 3:
                             squad_messages.append(" ".join(list_to_ping))
                             list_to_ping.clear()
-                if self.night_pin.active:
-                    list_to_ping -= set(self.night_pin.players_all)
                 if list_to_ping:
                     squad_messages.append(" ".join(list_to_ping))
                 if squad_messages:
@@ -1797,6 +1867,14 @@ class Bot:
             player.update_text(cur)
             self.message_manager.send_message(chat_id=player.chatid, text="Я занес твои результаты")
             conn.commit()
+
+            ##nigt_pin handling
+            if self.night_pin.active and player in self.night_pin.players_going and parse_result.profile.distance == self.night_pin.km and parse_result.profile.location != 'пустошь':
+                if parse_result.timedelta < datetime.timedelta(seconds=60):
+                    self.night_pin.set_onkm(player)
+                    self.message_manager.send_message(chat_id=player.chatid, text="Ночной пин подтвержден")
+                else:
+                    self.message_manager.send_message(chat_id=player.chatid, text="Для подтверждения ночного пина пришли пип-бой за одну минуту после нажатия /me в игре")
             return
 
         if user.id not in self.users.keys():

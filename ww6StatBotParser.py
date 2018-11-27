@@ -380,7 +380,7 @@ class Parser:
         res.message = msg
         res.username = msg.from_user.username
         self._parse_command(msg, res)
-        res.timedelta = datetime.datetime.now() - msg.forward_date if (msg.forward_from is not None) else 0
+        res.timedelta = datetime.datetime.now() - msg.forward_date if (msg.forward_from is not None) else datetime.timedelta(0)
         if (msg.forward_from is not None) and (msg.forward_from.id == self.WASTELAND_CHAT):
             self._parse_info_line(msg, res)
             self._parse_forward(msg, res)

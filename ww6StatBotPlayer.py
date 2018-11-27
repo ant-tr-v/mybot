@@ -171,6 +171,9 @@ class Player:
         self.keyboard = self.KeyboardType.DEFAULT
         self.settings = PlayerSettings(cur, self.id)
         self.titles = self.get_titles(cur)
+
+    def __hash__(self):
+        return self.id or 0
     
     def get_titles(self, cur) -> set:
         cur.execute("SELECT titles_json FROM titles WHERE user_id=?", (self.id,))
