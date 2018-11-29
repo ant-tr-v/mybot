@@ -19,10 +19,10 @@ class Config(object):
     TG_TOKEN = os.getenv('TG_TOKEN')
     TG_BOT_NAME = os.getenv('TG_BOT_NAME')
 
-    TG_USE_PROXY = False
     TG_PROXY_URL = os.getenv('TG_PROXY_URL')
     TG_PROXY_USERNAME = os.getenv('TG_PROXY_USERNAME')
     TG_PROXY_PASSWORD = os.getenv('TG_PROXY_PASSWORD')
+    TG_USE_PROXY = TG_PROXY_URL is not None
 
     RATELIMIT_CHAT_ID = os.getenv('RATELIMIT_CHAT_ID', '273060432')
 
