@@ -1879,9 +1879,14 @@ class Bot:
 
         if user.id not in self.users.keys():
             if message.chat.type == "private":
-                self.message_manager.send_message(chat_id=chat_id,
-                                                  text="Мы ещё не знакомы. Скинь мне форвард своих статов))",
-                                                  reply_markup=telega.ReplyKeyboardRemove())
+                message_text = (
+                    "Привет, давай знакомиться!\n"
+                    "Перейди в игру, открой 📟 Пип-бой, "
+                    "нажми команду <code>/me</code> внизу и перешли мне сообщение с полным профилем"
+                )
+                markup = telega.InlineKeyboardMarkup(
+                    [[telega.InlineKeyboardButton(text="Перейти в игру", url="https://t.me/WastelandWarsBot")]])
+                self.message_manager.send_message(chat_id=chat_id, text=message_text, reply_markup=markup)
             return
 
         processed_forward = False
