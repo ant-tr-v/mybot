@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 from telegram.ext import Updater
 
 from config import settings
-from modules import StartStatBotModule
+from modules import ActivityBotModule, StartStatBotModule
 
 
 class StatBot:
@@ -38,7 +38,7 @@ class StatBot:
         self.updater = Updater(token=settings.TG_TOKEN, request_kwargs=tg_request_kwargs)
 
         # initializing Modules
-        modules = [StartStatBotModule]
+        modules = [ActivityBotModule, StartStatBotModule]
 
         self.modules = []
         for Module in modules:
