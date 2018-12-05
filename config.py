@@ -82,6 +82,37 @@ class TestingConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
 
+    @property
+    def LOGGING_CONFIG(self):
+        return {
+            'version': 1,
+            'disable_existing_loggers': False,
+            'formatters': {
+                'standard': {
+                    'format':
+                    '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+                },
+            },
+            'handlers': {
+                'default': {
+                    'level': self.LOG_LEVEL,
+                    'formatter': 'standard',
+                    'class': 'logging.handlers.RotatingFileHandler',
+                    'filename': os.path.join(BASEDIR, 'logs', 'bot.log'),
+                    'mode': 'a',
+                    'maxBytes': 10485760,  # 1M
+                    'backupCount': 5,
+                },
+            },
+            'loggers': {
+                '': {
+                    'handlers': ['default'],
+                    'level': self.LOG_LEVEL,
+                    'propagate': True
+                }
+            }
+        }
+
 
 # При инициализации бота должно указываться название запускаемой конфигурации,
 #   либо по умолчанию будет режим dev
