@@ -1,19 +1,7 @@
 import telegram
-from telegram.ext import Dispatcher, CommandHandler
+from telegram.ext import CommandHandler, Dispatcher
 
-
-class BaseStatBotModule(object):
-    """
-    Basic class for bot modules.
-    All modules must be subclasses of this class
-    """
-    module_name = None
-
-    def __str__(self) -> str:
-        return self.module_name
-
-    def __init__(self, dispatcher: Dispatcher):
-        pass
+from .base import BaseStatBotModule
 
 
 class StartStatBotModule(BaseStatBotModule):
@@ -22,10 +10,10 @@ class StartStatBotModule(BaseStatBotModule):
     """
     module_name = 'Start'
 
-    def __init__(self, dispatcher: Dispatcher):
-        super().__init__(dispatcher)
-        handler = CommandHandler('start', self._start)
-        dispatcher.add_handler(handler)
+
+    def __init__(self):
+        super().__init__()
+        self.add_handler(CommandHandler('start', self._start))
 
     def _start(self, bot: telegram.Bot, update: telegram.Update):
         message = update.message
