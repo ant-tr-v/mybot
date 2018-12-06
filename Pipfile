@@ -4,9 +4,16 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+pylint = "*"
+yapf = "*"
+ipython = "*"
+pysocks = "*"
 
 [packages]
+peewee = "*"
+python-dotenv = "*"
 python-telegram-bot = "*"
+ujson = "*"
 
 [requires]
-python_version = "3.6"
+python_version = "3.7"

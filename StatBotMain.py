@@ -1,28 +1,54 @@
+import logging
+from urllib.parse import urlparse
+
 from telegram.ext import Updater
 
-from StatBotModules import StartStatBotModule
-from config import CurrentConfig
+from config import settings
+from modules import ActivityBotModule, StartStatBotModule
 
 
 class StatBot:
+
+    def _get_request_kwargs(self) -> dict:
+        '''Returns request_kwargs dictionary if proxy used in settngs'''
+        tg_request_kwargs = None
+        if settings.TG_PROXY_URL:
+            proxy_url = settings.TG_PROXY_URL
+            urllib3_proxy_kwargs = {}
+            parser = urlparse(proxy_url)
+            if parser.username:
+                # remove username and password from url
+                proxy_url = parser._replace(netloc=f'{parser.hostname}:{parser.port}').geturl()
+                urllib3_proxy_kwargs = {
+                    'username': parser.username,
+                    'password': parser.password
+                }
+            tg_request_kwargs = {
+                'proxy_url': proxy_url,
+                'urllib3_proxy_kwargs': urllib3_proxy_kwargs
+            }
+            self.logger.info('Proxy used: %s', proxy_url)
+        return tg_request_kwargs
+
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
+
         # initializing Updater
-        tg_request_kwargs = {'proxy_url': CurrentConfig.TG_PROXY_URL, 'urllib3_proxy_kwargs':
-            {'username': CurrentConfig.TG_PROXY_USERNAME, 'password': CurrentConfig.TG_PROXY_PASSWORD}
-                             } if CurrentConfig.TG_USE_PROXY else None
-        self.updater = Updater(token=CurrentConfig.TG_TOKEN, request_kwargs=tg_request_kwargs)
+        tg_request_kwargs = self._get_request_kwargs()
+        self.updater = Updater(token=settings.TG_TOKEN, request_kwargs=tg_request_kwargs)
 
         # initializing Modules
-        modules = [StartStatBotModule]
+        modules = [ActivityBotModule, StartStatBotModule]
 
         self.modules = []
-        for module in modules:
-            self.modules.append(module(self.updater.dispatcher))
+        for Module in modules:
+            self.modules.append(Module(self.updater.dispatcher))
 
-        print('Active modules:', ' '.join(map(str, self.modules)))
+        self.logger.info('Active modules: %s', ', '.join(map(str, self.modules)))
 
     def start(self):
-        self.updater.bot.send_message(chat_id=273060432, text='started')
+        self.logger.info('%s started', self.updater.bot.name)
+        self.updater.bot.send_message(chat_id=settings.ADMIN_CHAT_ID, text='started')
         self.updater.start_polling(clean=True)
         self.updater.idle()
 
