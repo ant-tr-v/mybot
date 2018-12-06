@@ -7,6 +7,7 @@ from playhouse.db_url import connect
 from config import settings
 
 # Connect to the database URL defined in the environment
+print(settings.DATABASE_URL)
 database = connect(settings.DATABASE_URL)
 
 
@@ -40,7 +41,7 @@ class TelegramUser(BaseModel):
 
 
 class TelegramChat(BaseModel):
-    chat_id = peewee.IntegerField(
+    chat_id = peewee.BigIntegerField(
         null=False, index=True, unique=True, primary_key=True)
     chat_type = peewee.CharField(
         max_length=10,

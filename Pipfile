@@ -14,6 +14,7 @@ peewee = "*"
 python-dotenv = "*"
 python-telegram-bot = "*"
 ujson = "*"
+psycopg2 = "*"
 
 [requires]
 python_version = "3.7"

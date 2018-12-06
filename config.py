@@ -18,7 +18,7 @@ class Config(object):
     DEBUG = False
     TESTING = False
 
-    DATABASE_URL = os.getenv('DATABASE_URI',
+    DATABASE_URL = os.getenv('DATABASE_URL',
                              'sqlite:///' + os.path.join(BASEDIR, 'db.sqlite'))
 
     TG_TOKEN = os.getenv('TG_TOKEN')
