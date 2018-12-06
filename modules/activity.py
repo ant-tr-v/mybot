@@ -13,12 +13,12 @@ class ActivityBotModule(BaseStatBotModule):
     """
     Tracks new users, chats, and user`s activity
     """
-    module_name = 'Activity'
+    module_name = 'activity'
     group = 0
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dispatcher: Dispatcher=None):
         self.add_handler(MessageHandler(Filters.all, self._write_activity))
+        super().__init__(dispatcher)
 
     def _write_activity(self, bot: Bot, update: Update):
         user_data = update.effective_user

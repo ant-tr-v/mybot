@@ -42,9 +42,7 @@ class StatBot:
 
         self.modules = []
         for Module in modules:
-            module = Module()
-            module.set_handlers(self.updater.dispatcher)
-            self.modules.append(module)
+            self.modules.append(Module(self.updater.dispatcher))
 
         self.logger.info('Active modules: %s', ', '.join(map(str, self.modules)))
 

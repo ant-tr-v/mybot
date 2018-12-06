@@ -8,12 +8,12 @@ class StartStatBotModule(BaseStatBotModule):
     """
     responds to /start command
     """
-    module_name = 'Start'
+    module_name = 'start'
 
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, dispatcher: Dispatcher=None):
         self.add_handler(CommandHandler('start', self._start))
+        super().__init__(dispatcher)
 
     def _start(self, bot: telegram.Bot, update: telegram.Update):
         message = update.message
