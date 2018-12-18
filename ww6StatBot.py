@@ -246,9 +246,14 @@ class Bot:
                                               reply_markup=telega.ReplyKeyboardRemove())
             return
         elif user.id not in self.users.keys():
-            self.message_manager.send_message(chat_id=message.chat_id,
-                                              text="Привет, давай знакомиться.\nКидай мне форвард своих статов",
-                                              reply_markup=telega.ReplyKeyboardRemove())
+            message_text = (
+                    "Привет, давай знакомиться!\n"
+                    "Перейди в игру, открой 📟 Пип-бой, "
+                    "нажми команду <code>/me</code> внизу и перешли мне сообщение с полным профилем"
+                )
+            markup = telega.InlineKeyboardMarkup(
+                    [[telega.InlineKeyboardButton(text="Перейти в игру", url="https://t.me/WastelandWarsBot")]])
+            self.message_manager.send_message(chat_id=message.chat_id, text=message_text, reply_markup=markup, parse_mode='HTML')
             return
         self.users[user.id].keyboard = Player.KeyboardType.DEFAULT
         self.message_manager.send_message(chat_id=message.chat_id, text="Рад тебя видеть",
@@ -1886,7 +1891,7 @@ class Bot:
                 )
                 markup = telega.InlineKeyboardMarkup(
                     [[telega.InlineKeyboardButton(text="Перейти в игру", url="https://t.me/WastelandWarsBot")]])
-                self.message_manager.send_message(chat_id=chat_id, text=message_text, reply_markup=markup)
+                self.message_manager.send_message(chat_id=chat_id, text=message_text, reply_markup=markup, parse_mode='HTML')
             return
 
         processed_forward = False
